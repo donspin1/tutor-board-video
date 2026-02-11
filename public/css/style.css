@@ -1,4 +1,4 @@
-/* ===== TutorBoard — МАКСИМАЛЬНО ЖЁСТКИЕ МОБИЛЬНЫЕ СТИЛИ (С !important) ===== */
+/* ===== TutorBoard — ОКОНЧАТЕЛЬНЫЕ СТИЛИ (десктоп + мобильный, точный порядок) ===== */
 
 :root {
     --primary: #6366f1;
@@ -23,7 +23,7 @@ body {
     overflow: hidden;
 }
 
-/* ===== ДЕСКТОПНАЯ ВЕРСИЯ (остаётся без изменений) ===== */
+/* ===== ДЕСКТОПНАЯ ВЕРСИЯ (БЕЗ ИЗМЕНЕНИЙ) ===== */
 .board-container {
     display: flex;
     height: 100vh;
@@ -346,19 +346,20 @@ body {
 }
 
 /* ==================================================================
-   МОБИЛЬНАЯ АДАПТАЦИЯ — ЖЁСТКИЙ ПОРЯДОК С !important
+   МОБИЛЬНАЯ АДАПТАЦИЯ — ТОЧНО ПОД ВАШУ СТРУКТУРУ HTML
    ================================================================== */
 @media (max-width: 900px) {
-    /* 1. Весь экран — flex-колонка */
+    /* 1. Переводим весь контейнер в колонку */
     .board-container {
+        display: flex !important;
         flex-direction: column !important;
         height: 100vh !important;
         width: 100vw !important;
     }
 
-    /* 2. Боковая панель (инструменты) — в самый низ */
+    /* 2. Панель инструментов — строго внизу */
     .sidebar {
-        order: 4 !important;
+        order: 2 !important;
         width: 100% !important;
         height: auto !important;
         flex-direction: row !important;
@@ -372,7 +373,7 @@ body {
         flex-shrink: 0 !important;
     }
 
-    /* 3. Основная область — занимает всё место между top-bar и sidebar */
+    /* 3. Основная область — всё остальное (сверху) */
     .main-area {
         order: 1 !important;
         display: flex !important;
@@ -382,20 +383,17 @@ body {
         padding: 10px !important;
     }
 
-    /* 4. Верхняя панель — ПЕРВАЯ внутри main-area */
+    /* 4. Верхняя панель — сверху, фикс высота */
     .top-bar {
-        order: 1 !important;
-        width: 100% !important;
+        flex-shrink: 0 !important;
         margin-bottom: 10px !important;
         padding: 8px 12px !important;
-        border-radius: 16px !important;
         background: white !important;
-        flex-shrink: 0 !important;
+        border-radius: 16px !important;
     }
 
-    /* 5. Canvas-область — ВТОРАЯ внутри main-area, занимает остаток */
+    /* 5. Canvas-область — занимает остаток, тоже flex-колонка */
     .canvas-area {
-        order: 2 !important;
         display: flex !important;
         flex-direction: column !important;
         flex: 1 1 0 !important;
@@ -407,7 +405,7 @@ body {
         box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
     }
 
-    /* 6. Панель видео — ПЕРВАЯ внутри canvas-area */
+    /* 6. Видео-панель — ПЕРВАЯ в canvas-area */
     .video-panel {
         order: 1 !important;
         position: relative !important;
@@ -444,14 +442,20 @@ body {
         color: white !important;
     }
 
-    /* 7. Доска — ВТОРАЯ внутри canvas-area, занимает остаток */
-    #canvas {
+    /* 7. Контейнер доски — ВТОРОЙ в canvas-area, растягивается */
+    .canvas-container {
         order: 2 !important;
         flex: 1 1 0 !important;
+        min-height: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        position: relative !important;
+    }
+
+    /* Убедимся, что canvas внутри тоже занимает всё */
+    #canvas, .upper-canvas, .lower-canvas {
         width: 100% !important;
         height: 100% !important;
-        display: block !important;
-        min-height: 0 !important;
     }
 
     /* 8. Панель свойств для репетитора — фиксированная снизу */
@@ -472,7 +476,7 @@ body {
         z-index: 200 !important;
     }
 
-    /* Компактные элементы */
+    /* Компактные элементы интерфейса */
     .copy-btn span {
         display: none !important;
     }
