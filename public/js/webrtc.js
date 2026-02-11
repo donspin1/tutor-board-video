@@ -1,33 +1,29 @@
-// webrtc.js — ИСПРАВЛЕННАЯ ПРОФЕССИОНАЛЬНАЯ ВЕРСИЯ (видео и аудио работают)
+// webrtc.js — ИСПРАВЛЕННАЯ ПРОФЕССИОНАЛЬНАЯ ВЕРСИЯ
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
 
-// ---------- 1. ЗАПРАШИВАЕМ РАЗРЕШЕНИЯ И СОХРАНЯЕМ ПОТОК ----------
-async function initLocalStream() {
+// Запрос разрешений при загрузке (без старта трансляции)
+async function requestPermissions() {
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        console.log('✅ Поток получен и сохранён');
-        return localStream;
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        tempStream.getTracks().forEach(track => track.stop());
+        console.log('✅ Разрешения на камеру/микрофон получены');
     } catch (err) {
-        console.error('❌ Не удалось получить доступ к камере/микрофону:', err);
-        alert('Не удалось включить камеру/микрофон. Проверьте разрешения.');
-        return null;
+        console.warn('❌ Нет разрешений:', err);
     }
 }
+requestPermissions();
 
-// ---------- 2. ИНИЦИАЛИЗАЦИЯ (ВЫЗЫВАЕТСЯ ИЗ tutor.js / student.js) ----------
 function initWebRTC(socket, roomId, role) {
     window.socket = socket;
     window.roomId = roomId;
     window.role = role;
 
-    // Кнопка включения видеозвонка
     const videoBtn = document.getElementById('tool-video');
     if (videoBtn) videoBtn.addEventListener('click', toggleVideoCall);
 
-    // Кнопки управления микрофоном/камерой
     const toggleMic = document.getElementById('toggle-mic');
     if (toggleMic) toggleMic.addEventListener('click', toggleMicrophone);
 
@@ -42,44 +38,39 @@ function initWebRTC(socket, roomId, role) {
         toggleScreen.addEventListener('click', startScreenShare);
     }
 
-    setupSocketListeners(socket);
+    setupSocketListeners();
 }
 
-// ---------- 3. ВКЛ / ВЫКЛ ВИДЕОЗВОНКА ----------
 async function toggleVideoCall() {
-    if (!isVideoActive) {
-        await startVideoCall();
-    } else {
-        stopVideoCall();
-    }
+    if (!isVideoActive) await startVideoCall();
+    else stopVideoCall();
 }
 
 async function startVideoCall() {
-    // Если поток ещё не создан — создаём
-    if (!localStream) {
-        localStream = await initLocalStream();
-        if (!localStream) return;
+    try {
+        if (!localStream) {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        }
+        isVideoActive = true;
+
+        const panel = document.getElementById('video-panel');
+        if (panel) panel.style.display = 'flex';
+
+        addLocalVideo();
+        
+        window.socket.emit('join-video-room', {
+            roomId: window.roomId,
+            peerId: window.socket.id,
+            role: window.role
+        });
+
+        // Активируем кнопки
+        updateMicButton(true);
+        updateCamButton(true);
+    } catch (err) {
+        alert('Не удалось включить камеру/микрофон');
+        console.error(err);
     }
-
-    isVideoActive = true;
-
-    // Показываем панель видео
-    const panel = document.getElementById('video-panel');
-    if (panel) panel.style.display = 'flex';
-
-    // Показываем своё видео
-    addVideoElement(window.socket.id, localStream, true);
-
-    // Присоединяемся к видеокомнате
-    window.socket.emit('join-video-room', {
-        roomId: window.roomId,
-        peerId: window.socket.id,
-        role: window.role
-    });
-
-    // Активируем иконки микрофона и камеры (по умолчанию включены)
-    updateMicButton(true);
-    updateCamButton(true);
 }
 
 function stopVideoCall() {
@@ -97,19 +88,21 @@ function stopVideoCall() {
     if (panel) panel.style.display = 'none';
 
     isVideoActive = false;
-
     window.socket.emit('leave-video-room', {
         roomId: window.roomId,
         peerId: window.socket.id
     });
 }
 
-// ---------- 4. ОТОБРАЖЕНИЕ ВИДЕО ----------
+function addLocalVideo() {
+    if (!localStream) return;
+    addVideoElement(window.socket.id, localStream, true);
+}
+
 function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
 
-    // Удаляем старый элемент, если такой уже есть
     const existing = document.getElementById(`video-${peerId}`);
     if (existing) existing.remove();
 
@@ -121,12 +114,12 @@ function addVideoElement(peerId, stream, isLocal = false) {
     video.srcObject = stream;
     video.autoplay = true;
     video.playsInline = true;
-    if (isLocal) video.muted = true; // Себя не слышим
+    if (isLocal) video.muted = true;
 
     const label = document.createElement('span');
     label.className = 'video-label';
-    label.textContent = isLocal
-        ? `Вы (${window.role})`
+    label.textContent = isLocal 
+        ? `Вы (${window.role})` 
         : (window.role === 'tutor' ? 'Ученик' : 'Репетитор');
 
     container.appendChild(video);
@@ -139,7 +132,6 @@ function removeVideoElement(peerId) {
     if (el) el.remove();
 }
 
-// ---------- 5. УПРАВЛЕНИЕ МИКРОФОНОМ И КАМЕРОЙ ----------
 function toggleMicrophone() {
     if (!localStream) {
         startVideoCall().then(() => {
@@ -196,13 +188,11 @@ function updateCamButton(enabled) {
     }
 }
 
-// ---------- 6. ДЕМОНСТРАЦИЯ ЭКРАНА (ТОЛЬКО ДЛЯ РЕПЕТИТОРА) ----------
 async function startScreenShare() {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const videoTrack = screenStream.getVideoTracks()[0];
         videoTrack.onended = () => {
-            // Возвращаем камеру после завершения демонстрации
             navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
                 const newTrack = stream.getVideoTracks()[0];
                 replaceVideoTrack(newTrack);
@@ -233,26 +223,12 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- 7. ОБРАБОТКА СИГНАЛОВ WEBRTC ----------
-function setupSocketListeners(socket) {
+function setupSocketListeners() {
+    const socket = window.socket;
+
     socket.on('user-joined', async ({ peerId, role }) => {
         console.log('👤 user joined', peerId, role);
-
-        // Если у нас нет потока — сначала запрашиваем разрешения и создаём поток
-        if (!localStream) {
-            localStream = await initLocalStream();
-            if (!localStream) return;
-            // Автоматически показываем видео (как при startVideoCall)
-            isVideoActive = true;
-            const panel = document.getElementById('video-panel');
-            if (panel) panel.style.display = 'flex';
-            addVideoElement(socket.id, localStream, true);
-            socket.emit('join-video-room', {
-                roomId: window.roomId,
-                peerId: socket.id,
-                role: window.role
-            });
-        }
+        if (!localStream) return;
 
         const pc = new RTCPeerConnection({
             iceServers: [
@@ -262,7 +238,6 @@ function setupSocketListeners(socket) {
         });
         peerConnections[peerId] = pc;
 
-        // Добавляем все треки локального потока
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
         pc.onicecandidate = (e) => {
@@ -283,22 +258,7 @@ function setupSocketListeners(socket) {
     });
 
     socket.on('receive-offer', async ({ from, offer }) => {
-        console.log('📩 receive offer from', from);
-
-        // Если у нас нет потока — создаём
-        if (!localStream) {
-            localStream = await initLocalStream();
-            if (!localStream) return;
-            isVideoActive = true;
-            const panel = document.getElementById('video-panel');
-            if (panel) panel.style.display = 'flex';
-            addVideoElement(socket.id, localStream, true);
-            socket.emit('join-video-room', {
-                roomId: window.roomId,
-                peerId: socket.id,
-                role: window.role
-            });
-        }
+        if (!localStream) return;
 
         const pc = new RTCPeerConnection({
             iceServers: [
