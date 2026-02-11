@@ -3,17 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TutorBoard — Репетитор</title>
+    <title>Репетитор — TutorBoard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/webrtc.js"></script>
+    <script src="js/tutor.js"></script>
 </head>
 <body>
     <div class="board-container">
         <!-- Левая панель инструментов -->
         <div class="sidebar">
-            <div class="tool-btn" id="tool-pencil" title="Карандаш">
+            <div class="tool-btn active" id="tool-pencil" title="Карандаш">
                 <i class="fas fa-pencil-alt"></i>
             </div>
             <div class="tool-btn" id="tool-line" title="Линия">
@@ -34,7 +36,7 @@
             <div class="tool-btn" id="tool-upload" title="Загрузить">
                 <i class="fas fa-upload"></i>
             </div>
-            <div class="tool-btn" id="tool-clear" title="Очистить">
+            <div class="tool-btn" id="tool-clear" title="Очистить всё">
                 <i class="fas fa-trash-alt"></i>
             </div>
             <div class="tool-btn" id="tool-save" title="Сохранить">
@@ -50,7 +52,12 @@
             <div class="top-bar">
                 <div class="room-info">
                     <span class="room-id" id="room-id">ID: ...</span>
-                    <button class="copy-btn" id="copy-room"><i class="far fa-copy"></i> Копировать</button>
+                    <button class="copy-btn" id="copy-room-id">
+                        <i class="far fa-copy"></i> Копировать ID
+                    </button>
+                    <button class="copy-btn" id="copy-student-link" title="Скопировать ссылку для ученика">
+                        <i class="fas fa-user-graduate"></i> Ссылка ученику
+                    </button>
                     <span id="username-display"></span>
                 </div>
                 <button id="lock-btn" class="video-btn" style="background: var(--success);">
@@ -61,7 +68,7 @@
             <div class="canvas-area">
                 <canvas id="canvas"></canvas>
                 
-                <!-- Панель свойств -->
+                <!-- Панель свойств (цвет, размер) -->
                 <div class="properties-panel" id="properties-panel">
                     <div class="panel-header">
                         <span><i class="fas fa-sliders-h"></i> Свойства</span>
@@ -76,7 +83,7 @@
                 </div>
 
                 <!-- Панель видео -->
-                <div class="video-panel" id="video-panel">
+                <div class="video-panel" id="video-panel" style="display: none;">
                     <div class="video-header">
                         <h4><i class="fas fa-video"></i> Видеозвонок</h4>
                         <div class="video-controls">
@@ -92,12 +99,10 @@
         </div>
     </div>
 
+    <!-- Уведомления -->
     <div class="notification" id="notification">
         <i class="fas fa-check-circle"></i>
         <span id="notification-text"></span>
     </div>
-
-    <script src="js/webrtc.js"></script>
-    <script src="js/tutor.js"></script>
 </body>
 </html>
