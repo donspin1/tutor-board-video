@@ -1,4 +1,4 @@
-// student.js — ИСПРАВЛЕННАЯ ВЕРСИЯ (видит рисунки, индикатор доступа)
+// student.js — АВТОМАТИЧЕСКИЙ ЗАПУСК ВИДЕО ПРИ ВХОДЕ
 
 const socket = io();
 const urlParams = new URLSearchParams(window.location.search);
@@ -29,7 +29,7 @@ canvas.freeDrawingBrush.color = '#000000';
 canvas.isDrawingMode = false;
 
 let currentTool = 'pencil';
-let hasAccess = true; // по умолчанию доступ есть
+let hasAccess = true;
 
 // ---- UI ----
 const roomIdEl = document.getElementById('room-id');
@@ -89,12 +89,11 @@ canvas.on('mouse:down', (opt) => {
     }
 });
 
-// ---- БЛОКИРОВКА ДОСТУПА (ПОЛНОСТЬЮ РАБОЧАЯ) ----
+// ---- БЛОКИРОВКА ДОСТУПА ----
 socket.on('admin-lock-status', (locked) => {
     hasAccess = !locked;
     canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
 
-    // Меняем прозрачность кнопок (кроме выхода и видео)
     document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
         if (!['exit-btn', 'tool-video'].includes(btn.id)) {
             btn.style.opacity = hasAccess ? '1' : '0.5';
@@ -102,7 +101,6 @@ socket.on('admin-lock-status', (locked) => {
         }
     });
 
-    // Обновляем индикатор
     if (accessIndicator) {
         if (hasAccess) {
             accessIndicator.style.background = 'var(--success)';
@@ -122,7 +120,7 @@ socket.on('room-not-found', () => {
     window.location.href = '/';
 });
 
-// ---- СИНХРОНИЗАЦИЯ ДОСКИ (ПОЛУЧАЕМ РИСУНКИ) ----
+// ---- СИНХРОНИЗАЦИЯ ДОСКИ ----
 socket.emit('join-room', roomId, 'student');
 
 socket.on('init-canvas', (data) => {
@@ -152,9 +150,25 @@ socket.on('clear-canvas', () => {
     canvas.backgroundColor = 'white';
 });
 
-// ---- ВИДЕО ----
+// ---- ВИДЕО: ИНИЦИАЛИЗАЦИЯ И АВТОСТАРТ ----
 if (typeof initWebRTC === 'function') {
     initWebRTC(socket, roomId, 'student');
+    
+    // АВТОМАТИЧЕСКИ ЗАПУСКАЕМ ВИДЕО ДЛЯ УЧЕНИКА (с задержкой, чтобы страница загрузилась)
+    setTimeout(() => {
+        // Проверяем, не запущено ли уже видео
+        if (typeof isVideoActive === 'undefined' || !isVideoActive) {
+            console.log('🎥 Автостарт видео для ученика');
+            // Используем глобальную функцию startVideoCall из webrtc.js
+            if (typeof startVideoCall === 'function') {
+                startVideoCall().catch(err => {
+                    console.warn('Не удалось автостартовать видео:', err);
+                });
+            }
+        }
+    }, 1000);
+} else {
+    console.error('webrtc.js не загружен!');
 }
 
 // ---- УВЕДОМЛЕНИЯ ----
