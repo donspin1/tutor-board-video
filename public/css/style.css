@@ -1,4 +1,4 @@
-/* ===== TutorBoard — АБСОЛЮТНО РАБОЧИЕ СТИЛИ (десктоп + мобильный) ===== */
+/* ===== TutorBoard — МАКСИМАЛЬНО ЖЁСТКИЕ МОБИЛЬНЫЕ СТИЛИ (С !important) ===== */
 
 :root {
     --primary: #6366f1;
@@ -23,7 +23,7 @@ body {
     overflow: hidden;
 }
 
-/* ===== ДЕСКТОПНАЯ ВЕРСИЯ (НЕ МЕНЯЕМ) ===== */
+/* ===== ДЕСКТОПНАЯ ВЕРСИЯ (остаётся без изменений) ===== */
 .board-container {
     display: flex;
     height: 100vh;
@@ -346,215 +346,214 @@ body {
 }
 
 /* ==================================================================
-   МОБИЛЬНАЯ АДАПТАЦИЯ — ГАРАНТИРОВАННЫЙ ПОРЯДОК
+   МОБИЛЬНАЯ АДАПТАЦИЯ — ЖЁСТКИЙ ПОРЯДОК С !important
    ================================================================== */
 @media (max-width: 900px) {
     /* 1. Весь экран — flex-колонка */
     .board-container {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-        width: 100vw;
+        flex-direction: column !important;
+        height: 100vh !important;
+        width: 100vw !important;
     }
 
     /* 2. Боковая панель (инструменты) — в самый низ */
     .sidebar {
-        order: 4;          /* будет последним */
-        width: 100%;
-        height: auto;
-        flex-direction: row;
-        justify-content: flex-start;
-        padding: 8px;
-        gap: 8px;
-        background: white;
-        border-top: 1px solid #e2e8f0;
-        border-bottom: none;
-        overflow-x: auto;
-        overflow-y: hidden;
-        flex-shrink: 0;
+        order: 4 !important;
+        width: 100% !important;
+        height: auto !important;
+        flex-direction: row !important;
+        justify-content: flex-start !important;
+        padding: 8px !important;
+        gap: 8px !important;
+        background: white !important;
+        border-top: 1px solid #e2e8f0 !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        flex-shrink: 0 !important;
     }
 
     /* 3. Основная область — занимает всё место между top-bar и sidebar */
     .main-area {
-        order: 3;          /* идёт после top-bar */
-        display: flex;
-        flex-direction: column;
-        flex: 1 1 0;
-        min-height: 0;
-        padding: 10px;
-        padding-top: 0;    /* верхний отступ будет от top-bar */
+        order: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+        padding: 10px !important;
     }
 
-    /* 4. Верхняя панель (ID, имя, доступ) — отдельно, над main-area */
+    /* 4. Верхняя панель — ПЕРВАЯ внутри main-area */
     .top-bar {
-        order: 2;          /* будет вторым в board-container */
-        width: 100%;
-        margin-bottom: 8px;
-        padding: 8px 12px;
-        border-radius: 0 0 16px 16px;
-        background: white;
-        flex-shrink: 0;
+        order: 1 !important;
+        width: 100% !important;
+        margin-bottom: 10px !important;
+        padding: 8px 12px !important;
+        border-radius: 16px !important;
+        background: white !important;
+        flex-shrink: 0 !important;
     }
 
-    /* 5. Canvas-область — внутри main-area, flex-колонка */
+    /* 5. Canvas-область — ВТОРАЯ внутри main-area, занимает остаток */
     .canvas-area {
-        display: flex;
-        flex-direction: column;
-        flex: 1 1 0;
-        min-height: 0;
-        width: 100%;
-        background: white;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        order: 2 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+        width: 100% !important;
+        background: white !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
     }
 
     /* 6. Панель видео — ПЕРВАЯ внутри canvas-area */
     .video-panel {
-        position: relative;
-        top: auto;
-        right: auto;
-        width: 100%;
-        background: white;
-        color: var(--dark);
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 12px;
-        margin-bottom: 10px;
-        display: none;
-        flex-shrink: 0;
-        order: 1;
+        order: 1 !important;
+        position: relative !important;
+        top: auto !important;
+        right: auto !important;
+        width: 100% !important;
+        background: white !important;
+        color: var(--dark) !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 12px !important;
+        padding: 12px !important;
+        margin-bottom: 10px !important;
+        display: none; /* будет показано через JS */
+        flex-shrink: 0 !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
     }
 
     .video-panel .video-header h4 {
-        color: var(--dark);
+        color: var(--dark) !important;
     }
 
     .video-panel .video-btn {
-        background: var(--light);
-        color: var(--gray);
+        background: var(--light) !important;
+        color: var(--gray) !important;
     }
 
     .video-panel .video-btn.active {
-        background: var(--success);
-        color: white;
+        background: var(--success) !important;
+        color: white !important;
     }
 
     .video-panel .video-btn.danger {
-        background: rgba(239, 68, 68, 0.8);
-        color: white;
+        background: rgba(239, 68, 68, 0.8) !important;
+        color: white !important;
     }
 
     /* 7. Доска — ВТОРАЯ внутри canvas-area, занимает остаток */
     #canvas {
-        order: 2;
-        flex: 1 1 0;
-        width: 100%;
-        height: 100%;
-        display: block;
-        min-height: 0;
+        order: 2 !important;
+        flex: 1 1 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        display: block !important;
+        min-height: 0 !important;
     }
 
     /* 8. Панель свойств для репетитора — фиксированная снизу */
     .properties-panel {
-        position: fixed;
-        left: 10px;
-        right: 10px;
-        top: auto;
-        bottom: 90px;
-        width: auto;
-        transform: none;
-        max-height: 60vh;
-        overflow-y: auto;
-        background: white;
-        border-radius: 16px;
-        padding: 16px;
-        box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
-        z-index: 200;
+        position: fixed !important;
+        left: 10px !important;
+        right: 10px !important;
+        top: auto !important;
+        bottom: 90px !important;
+        width: auto !important;
+        transform: none !important;
+        max-height: 60vh !important;
+        overflow-y: auto !important;
+        background: white !important;
+        border-radius: 16px !important;
+        padding: 16px !important;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.15) !important;
+        z-index: 200 !important;
     }
 
     /* Компактные элементы */
     .copy-btn span {
-        display: none;
+        display: none !important;
     }
     .copy-btn {
-        padding: 6px 10px;
-        min-width: 36px;
+        padding: 6px 10px !important;
+        min-width: 36px !important;
     }
 
     .room-id {
-        font-size: 13px;
-        padding: 4px 8px;
+        font-size: 13px !important;
+        padding: 4px 8px !important;
     }
 
     #access-indicator {
-        padding: 6px 12px;
-        font-size: 13px;
-        white-space: nowrap;
+        padding: 6px 12px !important;
+        font-size: 13px !important;
+        white-space: nowrap !important;
     }
 
     #username-display {
-        font-size: 13px;
-        background: rgba(0,0,0,0.04);
-        padding: 4px 10px;
-        border-radius: 20px;
+        font-size: 13px !important;
+        background: rgba(0,0,0,0.04) !important;
+        padding: 4px 10px !important;
+        border-radius: 20px !important;
     }
 
     .video-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 8px;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
     }
 
     .video-container {
-        background: #f1f5f9;
+        background: #f1f5f9 !important;
     }
 
     .video-btn {
-        width: 34px;
-        height: 34px;
-        font-size: 15px;
+        width: 34px !important;
+        height: 34px !important;
+        font-size: 15px !important;
     }
 
     .lock-btn {
-        width: 40px;
-        height: 40px;
-        font-size: 18px;
+        width: 40px !important;
+        height: 40px !important;
+        font-size: 18px !important;
     }
 
     .tool-btn {
-        width: 48px;
-        height: 48px;
-        font-size: 20px;
-        border-width: 1.5px;
-        background: white;
-        color: #4a5568;
-        flex-shrink: 0;
-        margin: 0 2px;
+        width: 48px !important;
+        height: 48px !important;
+        font-size: 20px !important;
+        border-width: 1.5px !important;
+        background: white !important;
+        color: #4a5568 !important;
+        flex-shrink: 0 !important;
+        margin: 0 2px !important;
     }
 
     .tool-btn.active {
-        background: var(--primary);
-        color: white;
-        border-color: var(--primary);
+        background: var(--primary) !important;
+        color: white !important;
+        border-color: var(--primary) !important;
     }
 }
 
 @media (max-width: 480px) {
-    .top-bar { padding: 6px 10px; }
-    .room-id { font-size: 12px; padding: 3px 6px; }
-    .copy-btn { padding: 5px 8px; min-width: 32px; }
-    .lock-btn { width: 36px; height: 36px; font-size: 16px; }
-    #access-indicator { padding: 4px 10px; font-size: 12px; }
-    .tool-btn { width: 44px; height: 44px; font-size: 18px; }
-    .sidebar { padding: 6px; gap: 6px; }
-    .video-panel { padding: 10px; }
-    .video-btn { width: 32px; height: 32px; font-size: 14px; }
-    .properties-panel { bottom: 80px; }
+    .top-bar { padding: 6px 10px !important; }
+    .room-id { font-size: 12px !important; padding: 3px 6px !important; }
+    .copy-btn { padding: 5px 8px !important; min-width: 32px !important; }
+    .lock-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
+    #access-indicator { padding: 4px 10px !important; font-size: 12px !important; }
+    .tool-btn { width: 44px !important; height: 44px !important; font-size: 18px !important; }
+    .sidebar { padding: 6px !important; gap: 6px !important; }
+    .video-panel { padding: 10px !important; }
+    .video-btn { width: 32px !important; height: 32px !important; font-size: 14px !important; }
+    .properties-panel { bottom: 80px !important; }
 }
 
 @media (max-width: 360px) {
-    .tool-btn { width: 40px; height: 40px; font-size: 16px; }
-    .sidebar { gap: 4px; }
-    .properties-panel { bottom: 70px; }
-    .video-btn { width: 30px; height: 30px; font-size: 13px; }
+    .tool-btn { width: 40px !important; height: 40px !important; font-size: 16px !important; }
+    .sidebar { gap: 4px !important; }
+    .properties-panel { bottom: 70px !important; }
+    .video-btn { width: 30px !important; height: 30px !important; font-size: 13px !important; }
 }
