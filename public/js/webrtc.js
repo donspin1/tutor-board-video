@@ -1,17 +1,12 @@
-// webrtc.js — улучшенная версия с предварительным запросом разрешений
-
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
 let permissionsGranted = false;
 
-// Функция для предварительного запроса разрешений (без показа видео)
+// Запрос разрешений при загрузке
 async function requestMediaPermissions() {
     try {
-        // Запрашиваем и аудио, и видео, но сразу же останавливаем треки,
-        // чтобы не загружать камеру, пока пользователь не нажмёт кнопку
         const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        // Останавливаем все треки, чтобы освободить камеру/микрофон
         tempStream.getTracks().forEach(track => track.stop());
         permissionsGranted = true;
         console.log('✅ Разрешения на камеру/микрофон получены');
@@ -20,11 +15,10 @@ async function requestMediaPermissions() {
         permissionsGranted = false;
     }
 }
-
-// Вызываем сразу при загрузке модуля
 requestMediaPermissions();
 
 function initWebRTC(socket, roomId, role) {
+    // Сохраняем в глобальные переменные, чтобы они были доступны во всех функциях
     window.socket = socket;
     window.roomId = roomId;
     window.role = role;
@@ -37,7 +31,6 @@ function initWebRTC(socket, roomId, role) {
     const toggleMic = document.getElementById('toggle-mic');
     if (toggleMic) {
         toggleMic.addEventListener('click', toggleMicrophone);
-        // Изначально кнопка микрофона в активном состоянии (предполагаем, что включено)
         toggleMic.classList.add('active');
     }
     
@@ -69,16 +62,19 @@ async function toggleVideoCall() {
 async function startVideoCall() {
     try {
         if (!localStream) {
-            // Если ещё нет потока, создаём
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         }
         isVideoActive = true;
         const panel = document.getElementById('video-panel');
         if (panel) panel.style.display = 'flex';
         
-        addVideoElement(socket.id, localStream, true);
+        addVideoElement(window.socket.id, localStream, true);
         
-        socket.emit('join-video-room', { roomId, peerId: socket.id, role });
+        window.socket.emit('join-video-room', { 
+            roomId: window.roomId, 
+            peerId: window.socket.id, 
+            role: window.role 
+        });
     } catch (err) {
         alert('Не удалось получить доступ к камере/микрофону');
         console.error(err);
@@ -97,9 +93,11 @@ function stopVideoCall() {
     const panel = document.getElementById('video-panel');
     if (panel) panel.style.display = 'none';
     isVideoActive = false;
-    socket.emit('leave-video-room', { roomId, peerId: socket.id });
+    window.socket.emit('leave-video-room', { 
+        roomId: window.roomId, 
+        peerId: window.socket.id 
+    });
     
-    // Сбрасываем активность кнопок
     const micBtn = document.getElementById('toggle-mic');
     const camBtn = document.getElementById('toggle-cam');
     if (micBtn) micBtn.classList.add('active');
@@ -110,7 +108,6 @@ function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
     
-    // Удаляем старый элемент, если есть
     const existing = document.getElementById(`video-${peerId}`);
     if (existing) existing.remove();
     
@@ -126,7 +123,9 @@ function addVideoElement(peerId, stream, isLocal = false) {
     
     const label = document.createElement('span');
     label.className = 'video-label';
-    label.textContent = isLocal ? `Вы (${role})` : (role === 'tutor' ? 'Ученик' : 'Репетитор');
+    label.textContent = isLocal 
+        ? `Вы (${window.role})` 
+        : (window.role === 'tutor' ? 'Ученик' : 'Репетитор');
     
     container.appendChild(video);
     container.appendChild(label);
@@ -140,15 +139,18 @@ function removeVideoElement(peerId) {
 
 function toggleMicrophone() {
     if (!localStream) {
-        // Если поток ещё не создан, запускаем видеозвонок
         startVideoCall().then(() => {
-            // После запуска отключаем микрофон (имитация нажатия)
             setTimeout(() => {
                 const audioTrack = localStream?.getAudioTracks()[0];
                 if (audioTrack) {
                     audioTrack.enabled = !audioTrack.enabled;
                     updateMicButton(audioTrack.enabled);
-                    socket.emit('video-toggle', { roomId, userId: socket.id, kind: 'audio', enabled: audioTrack.enabled });
+                    window.socket.emit('video-toggle', { 
+                        roomId: window.roomId, 
+                        userId: window.socket.id, 
+                        kind: 'audio', 
+                        enabled: audioTrack.enabled 
+                    });
                 }
             }, 500);
         });
@@ -158,7 +160,12 @@ function toggleMicrophone() {
     if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         updateMicButton(audioTrack.enabled);
-        socket.emit('video-toggle', { roomId, userId: socket.id, kind: 'audio', enabled: audioTrack.enabled });
+        window.socket.emit('video-toggle', { 
+            roomId: window.roomId, 
+            userId: window.socket.id, 
+            kind: 'audio', 
+            enabled: audioTrack.enabled 
+        });
     }
 }
 
@@ -179,7 +186,12 @@ function toggleCamera() {
                 if (videoTrack) {
                     videoTrack.enabled = !videoTrack.enabled;
                     updateCamButton(videoTrack.enabled);
-                    socket.emit('video-toggle', { roomId, userId: socket.id, kind: 'video', enabled: videoTrack.enabled });
+                    window.socket.emit('video-toggle', { 
+                        roomId: window.roomId, 
+                        userId: window.socket.id, 
+                        kind: 'video', 
+                        enabled: videoTrack.enabled 
+                    });
                 }
             }, 500);
         });
@@ -189,7 +201,12 @@ function toggleCamera() {
     if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         updateCamButton(videoTrack.enabled);
-        socket.emit('video-toggle', { roomId, userId: socket.id, kind: 'video', enabled: videoTrack.enabled });
+        window.socket.emit('video-toggle', { 
+            roomId: window.roomId, 
+            userId: window.socket.id, 
+            kind: 'video', 
+            enabled: videoTrack.enabled 
+        });
     }
 }
 
@@ -207,7 +224,6 @@ async function startScreenShare() {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const videoTrack = screenStream.getVideoTracks()[0];
         videoTrack.onended = () => {
-            // Вернуть камеру
             navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
                 const newTrack = stream.getVideoTracks()[0];
                 replaceVideoTrack(newTrack);
@@ -215,7 +231,7 @@ async function startScreenShare() {
             });
         };
         replaceVideoTrack(videoTrack);
-        updateCamButton(true); // экран считается "включённой камерой"
+        updateCamButton(true);
     } catch (err) {
         console.error('Ошибка демонстрации экрана:', err);
     }
@@ -233,7 +249,7 @@ function replaceVideoTrack(newTrack) {
             oldTrack.stop();
         }
         localStream.addTrack(newTrack);
-        const localVideo = document.querySelector(`#video-${socket.id} video`);
+        const localVideo = document.querySelector(`#video-${window.socket.id} video`);
         if (localVideo) localVideo.srcObject = localStream;
     }
 }
@@ -316,7 +332,6 @@ function setupSocketListeners(socket) {
     });
 
     socket.on('peer-video-toggle', ({ userId, kind, enabled }) => {
-        // Можно обновить UI, но в текущей версии просто логируем
         console.log(`Peer ${userId} ${kind} enabled: ${enabled}`);
     });
 }

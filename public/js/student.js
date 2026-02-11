@@ -1,4 +1,4 @@
-// student.js — полностью рабочая версия с синхронизацией и блокировкой
+// student.js — ИСПРАВЛЕННАЯ ВЕРСИЯ (работает синхронизация и блокировка)
 
 const socket = io();
 const urlParams = new URLSearchParams(window.location.search);
@@ -31,8 +31,15 @@ canvas.isDrawingMode = false;
 let currentTool = 'pencil';
 
 // ---- UI ----
-document.getElementById('room-id').innerText = `ID: ${roomId}`;
-document.getElementById('username-display').innerHTML = `<i class="fas fa-user-graduate"></i> ${userName}`;
+const roomIdEl = document.getElementById('room-id');
+if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
+
+const usernameEl = document.getElementById('username-display');
+if (usernameEl) usernameEl.innerHTML = `<i class="fas fa-user-graduate"></i> ${userName}`;
+
+// ---- Блокировка доступа (ОБЪЯВЛЯЕМ РАНЬШЕ) ----
+let hasAccess = true;
+const accessIndicator = document.getElementById('access-indicator');
 
 // ---- Инструменты (карандаш, ластик, выход) ----
 const pencilBtn = document.getElementById('tool-pencil');
@@ -44,7 +51,7 @@ if (pencilBtn) {
         document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
         pencilBtn.classList.add('active');
         currentTool = 'pencil';
-        canvas.isDrawingMode = true;
+        canvas.isDrawingMode = hasAccess; // только если доступ открыт
     });
 }
 
@@ -64,11 +71,9 @@ if (exitBtn) {
 }
 pencilBtn?.classList.add('active');
 
-// ---- Рисование (только если доступ открыт) ----
+// ---- Рисование (с проверкой доступа) ----
 canvas.on('path:created', (e) => {
-    // Проверяем, есть ли доступ
     if (!hasAccess) {
-        // Если доступа нет, удаляем только что созданный путь
         canvas.remove(e.path);
         showNotification('Доступ к рисованию закрыт', 2000);
         return;
@@ -88,9 +93,6 @@ canvas.on('mouse:down', (opt) => {
 });
 
 // ---- Блокировка доступа (управление репетитором) ----
-let hasAccess = true;
-const accessIndicator = document.getElementById('access-indicator');
-
 socket.on('admin-lock-status', (locked) => {
     hasAccess = !locked;
     canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
@@ -115,7 +117,7 @@ socket.on('admin-lock-status', (locked) => {
     showNotification(hasAccess ? 'Репетитор разрешил рисовать' : 'Репетитор ограничил доступ');
 });
 
-// ---- НОВОЕ: обработка несуществующей комнаты ----
+// ---- Обработка несуществующей комнаты ----
 socket.on('room-not-found', (missingRoomId) => {
     alert(`Комната с ID "${missingRoomId}" не найдена. Уточните ID у репетитора.`);
     window.location.href = '/';
@@ -154,6 +156,8 @@ socket.on('clear-canvas', () => {
 // ---- Видеозвонок ----
 if (typeof initWebRTC === 'function') {
     initWebRTC(socket, roomId, 'student');
+} else {
+    console.error('webrtc.js не загружен!');
 }
 
 // ---- Уведомления ----
