@@ -1,4 +1,4 @@
-/* ===== TutorBoard — ФИНАЛЬНЫЕ СТИЛИ (десктоп + мобильная, гарантированный порядок) ===== */
+/* ===== TutorBoard — АБСОЛЮТНО РАБОЧИЕ СТИЛИ (десктоп + мобильный) ===== */
 
 :root {
     --primary: #6366f1;
@@ -23,7 +23,7 @@ body {
     overflow: hidden;
 }
 
-/* ===== ДЕСКТОПНАЯ ВЕРСИЯ (не меняется) ===== */
+/* ===== ДЕСКТОПНАЯ ВЕРСИЯ (НЕ МЕНЯЕМ) ===== */
 .board-container {
     display: flex;
     height: 100vh;
@@ -127,7 +127,6 @@ body {
     background: var(--primary-dark);
 }
 
-/* Кнопка блокировки (иконка замка) */
 .lock-btn {
     width: 40px;
     height: 40px;
@@ -324,7 +323,6 @@ body {
     width: 100%;
 }
 
-/* ===== УВЕДОМЛЕНИЯ ===== */
 .notification {
     position: fixed;
     top: 20px;
@@ -348,26 +346,20 @@ body {
 }
 
 /* ==================================================================
-   МОБИЛЬНАЯ АДАПТАЦИЯ — ЖЁСТКИЙ ПОРЯДОК: 
-   1. top-bar (ID, имя, доступ)
-   2. video-panel (панель видео, белая)
-   3. #canvas (доска на весь остаток)
-   4. sidebar (инструменты снизу)
+   МОБИЛЬНАЯ АДАПТАЦИЯ — ГАРАНТИРОВАННЫЙ ПОРЯДОК
    ================================================================== */
 @media (max-width: 900px) {
-    /* 1. Сбрасываем layout в колонку */
+    /* 1. Весь экран — flex-колонка */
     .board-container {
+        display: flex;
         flex-direction: column;
         height: 100vh;
         width: 100vw;
     }
 
-    /* 2. Убираем лишние обёртки, все элементы становятся прямыми потомками body-контейнера? */
-    /* Но проще переопределить всё через order и убрать вложенные flex-конфликты */
-    
-    /* Отключаем десктопный sidebar слева — он станет нижней панелью */
+    /* 2. Боковая панель (инструменты) — в самый низ */
     .sidebar {
-        position: relative;
+        order: 4;          /* будет последним */
         width: 100%;
         height: auto;
         flex-direction: row;
@@ -377,35 +369,34 @@ body {
         background: white;
         border-top: 1px solid #e2e8f0;
         border-bottom: none;
-        box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
         overflow-x: auto;
         overflow-y: hidden;
-        order: 4; /* 4-й по счёту */
         flex-shrink: 0;
     }
 
-    /* Верхняя панель — строго наверх */
+    /* 3. Основная область — занимает всё место между top-bar и sidebar */
+    .main-area {
+        order: 3;          /* идёт после top-bar */
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 0;
+        min-height: 0;
+        padding: 10px;
+        padding-top: 0;    /* верхний отступ будет от top-bar */
+    }
+
+    /* 4. Верхняя панель (ID, имя, доступ) — отдельно, над main-area */
     .top-bar {
-        order: 1;
+        order: 2;          /* будет вторым в board-container */
         width: 100%;
-        margin-bottom: 0;
+        margin-bottom: 8px;
         padding: 8px 12px;
         border-radius: 0 0 16px 16px;
         background: white;
         flex-shrink: 0;
     }
 
-    /* Основная область — теперь просто контейнер для колонки */
-    .main-area {
-        order: 2;
-        display: flex;
-        flex-direction: column;
-        padding: 10px;
-        flex: 1 1 0;
-        min-height: 0;
-    }
-
-    /* Canvas-область — flex-колонка, занимает всё место */
+    /* 5. Canvas-область — внутри main-area, flex-колонка */
     .canvas-area {
         display: flex;
         flex-direction: column;
@@ -416,10 +407,9 @@ body {
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        margin-bottom: 0;
     }
 
-    /* Панель видео — всегда ПЕРВАЯ внутри canvas-area (над доской) */
+    /* 6. Панель видео — ПЕРВАЯ внутри canvas-area */
     .video-panel {
         position: relative;
         top: auto;
@@ -431,10 +421,9 @@ body {
         border-radius: 12px;
         padding: 12px;
         margin-bottom: 10px;
-        display: none; /* будет показано при старте */
+        display: none;
         flex-shrink: 0;
         order: 1;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
 
     .video-panel .video-header h4 {
@@ -456,7 +445,7 @@ body {
         color: white;
     }
 
-    /* Сама доска — ВТОРАЯ внутри canvas-area, занимает всё оставшееся */
+    /* 7. Доска — ВТОРАЯ внутри canvas-area, занимает остаток */
     #canvas {
         order: 2;
         flex: 1 1 0;
@@ -466,7 +455,7 @@ body {
         min-height: 0;
     }
 
-    /* Панель свойств для репетитора — фиксированная снизу */
+    /* 8. Панель свойств для репетитора — фиксированная снизу */
     .properties-panel {
         position: fixed;
         left: 10px;
@@ -551,75 +540,21 @@ body {
 }
 
 @media (max-width: 480px) {
-    .top-bar {
-        padding: 6px 10px;
-    }
-
-    .room-id {
-        font-size: 12px;
-        padding: 3px 6px;
-    }
-
-    .copy-btn {
-        padding: 5px 8px;
-        min-width: 32px;
-    }
-
-    .lock-btn {
-        width: 36px;
-        height: 36px;
-        font-size: 16px;
-    }
-
-    #access-indicator {
-        padding: 4px 10px;
-        font-size: 12px;
-    }
-
-    .tool-btn {
-        width: 44px;
-        height: 44px;
-        font-size: 18px;
-    }
-
-    .sidebar {
-        padding: 6px;
-        gap: 6px;
-    }
-
-    .video-panel {
-        padding: 10px;
-    }
-
-    .video-btn {
-        width: 32px;
-        height: 32px;
-        font-size: 14px;
-    }
-
-    .properties-panel {
-        bottom: 80px;
-    }
+    .top-bar { padding: 6px 10px; }
+    .room-id { font-size: 12px; padding: 3px 6px; }
+    .copy-btn { padding: 5px 8px; min-width: 32px; }
+    .lock-btn { width: 36px; height: 36px; font-size: 16px; }
+    #access-indicator { padding: 4px 10px; font-size: 12px; }
+    .tool-btn { width: 44px; height: 44px; font-size: 18px; }
+    .sidebar { padding: 6px; gap: 6px; }
+    .video-panel { padding: 10px; }
+    .video-btn { width: 32px; height: 32px; font-size: 14px; }
+    .properties-panel { bottom: 80px; }
 }
 
 @media (max-width: 360px) {
-    .tool-btn {
-        width: 40px;
-        height: 40px;
-        font-size: 16px;
-    }
-
-    .sidebar {
-        gap: 4px;
-    }
-
-    .properties-panel {
-        bottom: 70px;
-    }
-
-    .video-btn {
-        width: 30px;
-        height: 30px;
-        font-size: 13px;
-    }
+    .tool-btn { width: 40px; height: 40px; font-size: 16px; }
+    .sidebar { gap: 4px; }
+    .properties-panel { bottom: 70px; }
+    .video-btn { width: 30px; height: 30px; font-size: 13px; }
 }
