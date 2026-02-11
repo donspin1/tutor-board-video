@@ -1,4 +1,4 @@
-/* ===== TutorBoard — ОКОНЧАТЕЛЬНЫЕ СТИЛИ (доска 16:9 на мобильных) ===== */
+/* ===== TutorBoard — ФИНАЛЬНЫЕ СТИЛИ (доска 16:9, кнопки снизу, полная видимость) ===== */
 
 :root {
     --primary: #6366f1;
@@ -346,7 +346,7 @@ body {
 }
 
 /* ==================================================================
-   МОБИЛЬНАЯ АДАПТАЦИЯ — ДОСКА 16:9, ПОЛНЫЙ ПОРЯДОК
+   МОБИЛЬНАЯ АДАПТАЦИЯ — ИДЕАЛЬНЫЙ ПОРЯДОК, ДОСКА 16:9, КНОПКИ ВИДНЫ
    ================================================================== */
 @media (max-width: 900px) {
     .board-container {
@@ -356,6 +356,7 @@ body {
         width: 100vw !important;
     }
 
+    /* Панель инструментов — строго внизу */
     .sidebar {
         order: 2 !important;
         width: 100% !important;
@@ -366,20 +367,24 @@ body {
         gap: 8px !important;
         background: white !important;
         border-top: 1px solid #e2e8f0 !important;
+        border-bottom: none !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
         flex-shrink: 0 !important;
+        margin: 0 !important; /* убираем возможные отступы */
     }
 
+    /* Основная область — занимает всё место между верхней панелью и кнопками */
     .main-area {
         order: 1 !important;
         display: flex !important;
         flex-direction: column !important;
         flex: 1 1 0 !important;
         min-height: 0 !important;
-        padding: 10px !important;
+        padding: 10px 10px 0 10px !important; /* убран нижний padding */
     }
 
+    /* Верхняя панель — фиксированная высота */
     .top-bar {
         flex-shrink: 0 !important;
         margin-bottom: 10px !important;
@@ -388,11 +393,11 @@ body {
         border-radius: 16px !important;
     }
 
-    /* ----- Canvas-область: больше не растягивается ----- */
+    /* Canvas-область — не растягивается, подстраивается под контент */
     .canvas-area {
         display: flex !important;
         flex-direction: column !important;
-        flex: none !important;                /* ← не растягивается */
+        flex: none !important;
         width: 100% !important;
         background: white !important;
         border-radius: 16px !important;
@@ -401,6 +406,7 @@ body {
         margin-bottom: 10px !important;
     }
 
+    /* Панель видео — первая */
     .video-panel {
         order: 1 !important;
         position: relative !important;
@@ -437,10 +443,10 @@ body {
         color: white !important;
     }
 
-    /* ----- Контейнер доски: строго 16:9, не растягивается ----- */
+    /* Контейнер доски — строго 16:9 */
     .canvas-container {
         order: 2 !important;
-        aspect-ratio: 16 / 9 !important;    /* прямоугольник, как у видео */
+        aspect-ratio: 16 / 9 !important;
         width: 100% !important;
         height: auto !important;
         flex: none !important;
@@ -448,7 +454,7 @@ body {
         background: white !important;
     }
 
-    /* Canvas внутри занимают весь контейнер */
+    /* Canvas внутри занимают 100% контейнера */
     #canvas,
     .upper-canvas,
     .lower-canvas {
@@ -456,6 +462,7 @@ body {
         height: 100% !important;
     }
 
+    /* Панель свойств для репетитора — фиксированная снизу */
     .properties-panel {
         position: fixed !important;
         left: 10px !important;
@@ -473,6 +480,7 @@ body {
         z-index: 200 !important;
     }
 
+    /* Компактные элементы интерфейса */
     .copy-btn span {
         display: none !important;
     }
