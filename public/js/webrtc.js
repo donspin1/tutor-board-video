@@ -1,20 +1,34 @@
-// webrtc.js — ИСПРАВЛЕННАЯ ПРОФЕССИОНАЛЬНАЯ ВЕРСИЯ
+// webrtc.js — УЛУЧШЕННАЯ ВЕРСИЯ с проверкой устройств и понятными ошибками
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
 
-// Запрос разрешений при загрузке (без старта трансляции)
-async function requestPermissions() {
+// Проверка наличия медиа-устройств
+async function checkMediaDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        return { success: false, error: 'Ваш браузер не поддерживает WebRTC' };
+    }
+    
     try {
-        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        tempStream.getTracks().forEach(track => track.stop());
-        console.log('✅ Разрешения на камеру/микрофон получены');
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasVideo = devices.some(d => d.kind === 'videoinput');
+        const hasAudio = devices.some(d => d.kind === 'audioinput');
+        
+        if (!hasVideo && !hasAudio) {
+            return { success: false, error: 'Не найдена камера или микрофон. Подключите устройство.' };
+        }
+        if (!hasVideo) {
+            return { success: false, error: 'Не найдена камера. Будет доступен только звук.' };
+        }
+        if (!hasAudio) {
+            return { success: false, error: 'Не найден микрофон. Будет доступно только видео.' };
+        }
+        return { success: true, devices };
     } catch (err) {
-        console.warn('❌ Нет разрешений:', err);
+        return { success: false, error: 'Не удалось получить список устройств. Разрешите доступ.' };
     }
 }
-requestPermissions();
 
 function initWebRTC(socket, roomId, role) {
     window.socket = socket;
@@ -48,9 +62,20 @@ async function toggleVideoCall() {
 
 async function startVideoCall() {
     try {
-        if (!localStream) {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        // Проверяем устройства перед запросом
+        const deviceCheck = await checkMediaDevices();
+        if (!deviceCheck.success) {
+            alert(deviceCheck.error);
+            return;
         }
+
+        if (!localStream) {
+            localStream = await navigator.mediaDevices.getUserMedia({ 
+                video: deviceCheck.devices?.some(d => d.kind === 'videoinput') || false, 
+                audio: deviceCheck.devices?.some(d => d.kind === 'audioinput') || false 
+            });
+        }
+        
         isVideoActive = true;
 
         const panel = document.getElementById('video-panel');
@@ -64,12 +89,20 @@ async function startVideoCall() {
             role: window.role
         });
 
-        // Активируем кнопки
         updateMicButton(true);
         updateCamButton(true);
     } catch (err) {
-        alert('Не удалось включить камеру/микрофон');
-        console.error(err);
+        console.error('Ошибка включения видео:', err);
+        
+        if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            alert('Не найдена камера или микрофон. Подключите устройство и перезагрузите страницу.');
+        } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            alert('Доступ к камере/микрофону заблокирован. Разрешите доступ в настройках браузера.');
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            alert('Камера или микрофон уже используется другим приложением. Закройте его и повторите.');
+        } else {
+            alert('Не удалось включить камеру/микрофон. Проверьте подключение устройств.');
+        }
     }
 }
 
@@ -203,6 +236,7 @@ async function startScreenShare() {
         updateCamButton(true);
     } catch (err) {
         console.error('Ошибка демонстрации экрана:', err);
+        alert('Не удалось начать демонстрацию экрана.');
     }
 }
 
