@@ -1,4 +1,4 @@
-// student.js — исправленная версия, код не отображается на странице
+// student.js — добавлена проверка существования комнаты
 
 const socket = io();
 const urlParams = new URLSearchParams(window.location.search);
@@ -11,10 +11,7 @@ if (!roomId) {
 }
 
 // ---- Canvas ----
-const canvas = new fabric.Canvas('canvas', {
-    backgroundColor: 'white',
-    selection: false
-});
+const canvas = new fabric.Canvas('canvas', { backgroundColor: 'white', selection: false });
 
 function resizeCanvas() {
     const container = document.querySelector('.canvas-area');
@@ -65,7 +62,6 @@ if (exitBtn) {
         window.location.href = '/';
     });
 }
-
 pencilBtn?.classList.add('active');
 
 // ---- Рисование ----
@@ -84,7 +80,7 @@ canvas.on('mouse:down', (opt) => {
     }
 });
 
-// ---- Блокировка доступа (от репетитора) ----
+// ---- Блокировка доступа ----
 let hasAccess = true;
 const accessIndicator = document.getElementById('access-indicator');
 
@@ -112,8 +108,15 @@ socket.on('admin-lock-status', (locked) => {
     showNotification(hasAccess ? 'Репетитор разрешил рисовать' : 'Репетитор ограничил доступ');
 });
 
+// ---- НОВОЕ: обработка несуществующей комнаты ----
+socket.on('room-not-found', (missingRoomId) => {
+    alert(`Комната с ID "${missingRoomId}" не найдена. Уточните ID у репетитора.`);
+    window.location.href = '/';
+});
+
 // ---- Синхронизация доски ----
-socket.emit('join-room', roomId);
+// Передаём роль 'student'
+socket.emit('join-room', roomId, 'student');
 
 socket.on('init-canvas', (data) => {
     canvas.loadFromJSON(data, () => {
