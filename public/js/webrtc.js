@@ -1,4 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (ученик видит репетитора и может включить камеру)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (гарантированная работа кнопок у ученика)
 
 let localStream = null;
 let peerConnections = {};
@@ -12,24 +12,55 @@ function initWebRTC(socket, roomId, role) {
 
     console.log(`📹 WebRTC инициализирован для ${role}`);
 
+    // Привязываем кнопку видеозвонка (включение/выключение)
     const videoBtn = document.getElementById('tool-video');
     if (videoBtn) {
         videoBtn.addEventListener('click', toggleVideoCall);
-        console.log('✅ Кнопка видео привязана');
+        console.log('✅ Кнопка video привязана');
+    } else {
+        console.warn('⚠️ Кнопка tool-video не найдена');
     }
 
+    // ---------- КНОПКИ УПРАВЛЕНИЯ ЗВОНКОМ ----------
     const toggleMic = document.getElementById('toggle-mic');
-    if (toggleMic) toggleMic.addEventListener('click', toggleMicrophone);
+    if (toggleMic) {
+        // Удаляем старые обработчики, чтобы избежать дублирования
+        toggleMic.removeEventListener('click', toggleMicrophone);
+        toggleMic.addEventListener('click', toggleMicrophone);
+        console.log('✅ Кнопка toggle-mic привязана');
+    } else {
+        console.warn('⚠️ Кнопка toggle-mic не найдена');
+    }
 
     const toggleCam = document.getElementById('toggle-cam');
-    if (toggleCam) toggleCam.addEventListener('click', toggleCamera);
+    if (toggleCam) {
+        toggleCam.removeEventListener('click', toggleCamera);
+        toggleCam.addEventListener('click', toggleCamera);
+        console.log('✅ Кнопка toggle-cam привязана');
+    } else {
+        console.warn('⚠️ Кнопка toggle-cam не найдена');
+    }
 
     const endCallBtn = document.getElementById('end-call');
-    if (endCallBtn) endCallBtn.addEventListener('click', stopVideoCall);
+    if (endCallBtn) {
+        endCallBtn.removeEventListener('click', stopVideoCall);
+        endCallBtn.addEventListener('click', stopVideoCall);
+        console.log('✅ Кнопка end-call привязана');
+    } else {
+        console.warn('⚠️ Кнопка end-call не найдена');
+    }
 
     const toggleScreen = document.getElementById('toggle-screen');
     if (toggleScreen && role === 'tutor') {
+        toggleScreen.removeEventListener('click', startScreenShare);
         toggleScreen.addEventListener('click', startScreenShare);
+        console.log('✅ Кнопка toggle-screen привязана для репетитора');
+    }
+
+    // Устанавливаем начальное состояние кнопок (если поток уже есть)
+    if (localStream) {
+        updateMicButton(localStream.getAudioTracks()[0]?.enabled ?? false);
+        updateCamButton(localStream.getVideoTracks()[0]?.enabled ?? false);
     }
 
     setupSocketListeners();
@@ -46,7 +77,6 @@ async function toggleVideoCall() {
 
 async function startVideoCall() {
     try {
-        // Если поток ещё не создан — создаём
         if (!localStream) {
             console.log('🎥 Запрашиваем камеру и микрофон...');
             localStream = await navigator.mediaDevices.getUserMedia({ 
@@ -54,7 +84,7 @@ async function startVideoCall() {
                 audio: true 
             }).catch(err => {
                 console.error('Ошибка getUserMedia:', err);
-                // Пробуем только аудио, если видео недоступно
+                // Пробуем только аудио
                 return navigator.mediaDevices.getUserMedia({ video: false, audio: true });
             });
             
@@ -81,7 +111,7 @@ async function startVideoCall() {
         });
         console.log(`📡 Присоединились к видеокомнате ${window.roomId}`);
 
-        // Активируем кнопки
+        // Активируем кнопки (по умолчанию включены)
         updateMicButton(true);
         updateCamButton(true);
     } catch (err) {
@@ -91,6 +121,8 @@ async function startVideoCall() {
 }
 
 function stopVideoCall() {
+    console.log('🛑 Завершение видеозвонка');
+    
     if (localStream) {
         localStream.getTracks().forEach(track => {
             track.stop();
@@ -98,6 +130,7 @@ function stopVideoCall() {
         });
         localStream = null;
     }
+    
     Object.values(peerConnections).forEach(pc => pc.close());
     peerConnections = {};
 
@@ -108,11 +141,18 @@ function stopVideoCall() {
     if (panel) panel.style.display = 'none';
 
     isVideoActive = false;
-    window.socket.emit('leave-video-room', {
-        roomId: window.roomId,
-        peerId: window.socket.id
-    });
+    
+    if (window.socket) {
+        window.socket.emit('leave-video-room', {
+            roomId: window.roomId,
+            peerId: window.socket.id
+        });
+    }
     console.log('👋 Покинули видеокомнату');
+    
+    // Сбрасываем состояние кнопок
+    updateMicButton(false);
+    updateCamButton(false);
 }
 
 // ---------- ОТОБРАЖЕНИЕ ВИДЕО ----------
@@ -128,7 +168,6 @@ function addVideoElement(peerId, stream, isLocal = false) {
         return;
     }
 
-    // Удаляем старый элемент, если есть
     const existing = document.getElementById(`video-${peerId}`);
     if (existing) existing.remove();
 
@@ -162,15 +201,18 @@ function removeVideoElement(peerId) {
     }
 }
 
-// ---------- УПРАВЛЕНИЕ МИКРОФОНОМ И КАМЕРОЙ ----------
+// ---------- УПРАВЛЕНИЕ МИКРОФОНОМ ----------
 function toggleMicrophone() {
+    console.log('🎤 toggleMicrophone вызван');
     if (!localStream) {
+        console.log('🎤 Нет потока, запускаем видео...');
         startVideoCall().then(() => {
             setTimeout(() => {
                 const track = localStream?.getAudioTracks()[0];
                 if (track) {
                     track.enabled = !track.enabled;
                     updateMicButton(track.enabled);
+                    console.log(`🎤 Микрофон ${track.enabled ? 'включён' : 'выключен'}`);
                 }
             }, 500);
         });
@@ -180,6 +222,7 @@ function toggleMicrophone() {
     if (track) {
         track.enabled = !track.enabled;
         updateMicButton(track.enabled);
+        console.log(`🎤 Микрофон ${track.enabled ? 'включён' : 'выключен'}`);
     }
 }
 
@@ -187,18 +230,26 @@ function updateMicButton(enabled) {
     const btn = document.getElementById('toggle-mic');
     if (btn) {
         btn.innerHTML = enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
-        btn.classList.toggle('active', enabled);
+        if (enabled) btn.classList.add('active');
+        else btn.classList.remove('active');
+        console.log(`🎤 Иконка микрофона обновлена: ${enabled ? 'вкл' : 'выкл'}`);
+    } else {
+        console.warn('⚠️ toggle-mic не найден при обновлении');
     }
 }
 
+// ---------- УПРАВЛЕНИЕ КАМЕРОЙ ----------
 function toggleCamera() {
+    console.log('📷 toggleCamera вызван');
     if (!localStream) {
+        console.log('📷 Нет потока, запускаем видео...');
         startVideoCall().then(() => {
             setTimeout(() => {
                 const track = localStream?.getVideoTracks()[0];
                 if (track) {
                     track.enabled = !track.enabled;
                     updateCamButton(track.enabled);
+                    console.log(`📷 Камера ${track.enabled ? 'включена' : 'выключена'}`);
                 }
             }, 500);
         });
@@ -208,6 +259,7 @@ function toggleCamera() {
     if (track) {
         track.enabled = !track.enabled;
         updateCamButton(track.enabled);
+        console.log(`📷 Камера ${track.enabled ? 'включена' : 'выключена'}`);
     }
 }
 
@@ -215,17 +267,20 @@ function updateCamButton(enabled) {
     const btn = document.getElementById('toggle-cam');
     if (btn) {
         btn.innerHTML = enabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
-        btn.classList.toggle('active', enabled);
+        if (enabled) btn.classList.add('active');
+        else btn.classList.remove('active');
+        console.log(`📷 Иконка камеры обновлена: ${enabled ? 'вкл' : 'выкл'}`);
+    } else {
+        console.warn('⚠️ toggle-cam не найден при обновлении');
     }
 }
 
-// ---------- ДЕМОНСТРАЦИЯ ЭКРАНА (ТОЛЬКО РЕПЕТИТОР) ----------
+// ---------- ДЕМОНСТРАЦИЯ ЭКРАНА ----------
 async function startScreenShare() {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const videoTrack = screenStream.getVideoTracks()[0];
         videoTrack.onended = () => {
-            // Возвращаем камеру
             navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
                 const newTrack = stream.getVideoTracks()[0];
                 replaceVideoTrack(newTrack);
@@ -262,17 +317,14 @@ function replaceVideoTrack(newTrack) {
 function setupSocketListeners() {
     const socket = window.socket;
 
-    // Кто-то присоединился к нашей видеокомнате
     socket.on('user-joined', async ({ peerId, role }) => {
         console.log(`👤 user joined: ${peerId} (${role})`);
 
-        // Если у нас ещё нет потока — создаём его (авто-ответ на звонок)
         if (!localStream) {
             console.log('📞 Получен входящий вызов, запускаем видео...');
             await startVideoCall();
         }
 
-        // Создаём peer-соединение
         const pc = new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -281,7 +333,6 @@ function setupSocketListeners() {
         });
         peerConnections[peerId] = pc;
 
-        // Добавляем все треки локального потока
         localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream);
             console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
@@ -309,11 +360,9 @@ function setupSocketListeners() {
         console.log(`📤 Offer отправлен ${peerId}`);
     });
 
-    // Получили offer от другого участника
     socket.on('receive-offer', async ({ from, offer }) => {
         console.log(`📩 Получен offer от ${from}`);
 
-        // Если у нас нет потока — создаём
         if (!localStream) {
             console.log('📞 Получен offer, запускаем видео...');
             await startVideoCall();
@@ -354,7 +403,6 @@ function setupSocketListeners() {
         console.log(`📤 Answer отправлен ${from}`);
     });
 
-    // Получили answer
     socket.on('receive-answer', ({ from, answer }) => {
         console.log(`📩 Получен answer от ${from}`);
         if (peerConnections[from]) {
@@ -362,7 +410,6 @@ function setupSocketListeners() {
         }
     });
 
-    // Получили ICE-кандидат
     socket.on('receive-ice-candidate', ({ from, candidate }) => {
         console.log(`🧊 Получен ICE-кандидат от ${from}`);
         if (peerConnections[from]) {
@@ -370,7 +417,6 @@ function setupSocketListeners() {
         }
     });
 
-    // Пользователь покинул комнату
     socket.on('user-left', (peerId) => {
         console.log(`👋 user left: ${peerId}`);
         if (peerConnections[peerId]) {
