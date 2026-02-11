@@ -1,20 +1,29 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (гарантированная работа кнопок у ученика)
+// webrtc.js — ФИНАЛЬНАЯ СТАБИЛЬНАЯ ВЕРСИЯ (с отзеркаливанием камеры)
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
+let webrtcInitialized = false; // Флаг защиты от повторной инициализации
 
 // ---------- ИНИЦИАЛИЗАЦИЯ ----------
 function initWebRTC(socket, roomId, role) {
+    // Защита от повторной инициализации (например, при обновлении страницы)
+    if (webrtcInitialized) {
+        console.log('⚠️ WebRTC уже инициализирован, пропускаем');
+        return;
+    }
+    
     window.socket = socket;
     window.roomId = roomId;
     window.role = role;
 
     console.log(`📹 WebRTC инициализирован для ${role}`);
+    webrtcInitialized = true;
 
-    // Привязываем кнопку видеозвонка (включение/выключение)
+    // Кнопка видеозвонка (открыть/закрыть панель)
     const videoBtn = document.getElementById('tool-video');
     if (videoBtn) {
+        videoBtn.removeEventListener('click', toggleVideoCall); // удаляем старый, если был
         videoBtn.addEventListener('click', toggleVideoCall);
         console.log('✅ Кнопка video привязана');
     } else {
@@ -24,7 +33,6 @@ function initWebRTC(socket, roomId, role) {
     // ---------- КНОПКИ УПРАВЛЕНИЯ ЗВОНКОМ ----------
     const toggleMic = document.getElementById('toggle-mic');
     if (toggleMic) {
-        // Удаляем старые обработчики, чтобы избежать дублирования
         toggleMic.removeEventListener('click', toggleMicrophone);
         toggleMic.addEventListener('click', toggleMicrophone);
         console.log('✅ Кнопка toggle-mic привязана');
@@ -155,7 +163,7 @@ function stopVideoCall() {
     updateCamButton(false);
 }
 
-// ---------- ОТОБРАЖЕНИЕ ВИДЕО ----------
+// ---------- ОТОБРАЖЕНИЕ ВИДЕО (С ОТЗЕРКАЛИВАНИЕМ) ----------
 function addLocalVideo() {
     if (!localStream) return;
     addVideoElement(window.socket.id, localStream, true);
@@ -168,6 +176,7 @@ function addVideoElement(peerId, stream, isLocal = false) {
         return;
     }
 
+    // Удаляем старый элемент, если такой уже есть
     const existing = document.getElementById(`video-${peerId}`);
     if (existing) existing.remove();
 
@@ -179,7 +188,11 @@ function addVideoElement(peerId, stream, isLocal = false) {
     video.srcObject = stream;
     video.autoplay = true;
     video.playsInline = true;
-    if (isLocal) video.muted = true;
+    if (isLocal) {
+        video.muted = true;
+        // 🔥 ОТЗЕРКАЛИВАНИЕ для своего видео (эффект зеркала)
+        video.style.transform = 'scaleX(-1)';
+    }
 
     const label = document.createElement('span');
     label.className = 'video-label';
@@ -275,12 +288,13 @@ function updateCamButton(enabled) {
     }
 }
 
-// ---------- ДЕМОНСТРАЦИЯ ЭКРАНА ----------
+// ---------- ДЕМОНСТРАЦИЯ ЭКРАНА (ТОЛЬКО РЕПЕТИТОР) ----------
 async function startScreenShare() {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const videoTrack = screenStream.getVideoTracks()[0];
         videoTrack.onended = () => {
+            // Возвращаем камеру после завершения демонстрации
             navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
                 const newTrack = stream.getVideoTracks()[0];
                 replaceVideoTrack(newTrack);
