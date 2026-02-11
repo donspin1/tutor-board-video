@@ -1,5 +1,4 @@
-// tutor-login.js — обработка входа репетитора
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function() {
     const loginBtn = document.getElementById('login-tutor-btn');
     if (loginBtn) {
         loginBtn.addEventListener('click', loginTutor);

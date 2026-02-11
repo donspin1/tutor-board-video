@@ -1,5 +1,4 @@
-// login.js — обработка входа ученика
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function() {
     const enterBtn = document.getElementById('enter-student-btn');
     if (enterBtn) {
         enterBtn.addEventListener('click', enterAsStudent);

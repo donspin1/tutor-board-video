@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TutorBoard — Вход для ученика</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* ваши стили */
+    </style>
 </head>
 <body>
     <h1>ProTutorBoard</h1>
     <div class="card">
-        <h2 style="margin-bottom:20px;">Вход в комнату ученика</h2>
+        <h2>Вход в комнату ученика</h2>
         <div class="input-group">
             <label>ID комнаты (от репетитора)</label>
             <input type="text" id="roomId" placeholder="Например, ABC123">
@@ -19,11 +21,22 @@
             <label>Ваше имя</label>
             <input type="text" id="userName" placeholder="Как вас зовут?">
         </div>
-        <button class="btn btn-primary" id="enter-student-btn">Войти в комнату</button>
+        <button class="btn btn-primary" onclick="enterAsStudent()">Войти в комнату</button>
         <div class="tutor-link">
             <a href="/tutor-login.html">Вход для репетитора →</a>
         </div>
     </div>
-    <script src="js/login.js"></script>
+
+    <script>
+        function enterAsStudent() {
+            const room = document.getElementById('roomId').value.trim();
+            if (!room) {
+                alert('Введите ID комнаты от репетитора!');
+                return;
+            }
+            const name = document.getElementById('userName').value || 'Ученик';
+            window.location.href = `/student.html?room=${encodeURIComponent(room)}&name=${encodeURIComponent(name)}`;
+        }
+    </script>
 </body>
 </html>
