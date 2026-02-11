@@ -1,4 +1,4 @@
-/* ===== TutorBoard — Полные стили (десктоп + мобильная версия, полностью работоспособная) ===== */
+/* ===== TutorBoard — Полные стили (десктоп + мобильная, все исправления) ===== */
 
 :root {
     --primary: #6366f1;
@@ -23,7 +23,7 @@ body {
     overflow: hidden;
 }
 
-/* ===== ОБЩИЕ КОМПОНЕНТЫ (ДЕСКТОП) ===== */
+/* ===== ДЕСКТОПНАЯ ВЕРСИЯ ===== */
 .board-container {
     display: flex;
     height: 100vh;
@@ -168,16 +168,16 @@ body {
     display: block;
 }
 
-/* ===== ПАНЕЛЬ ВИДЕО (ДЕСКТОП) ===== */
+/* ===== ПАНЕЛЬ ВИДЕО (ДЕСКТОП — ИСПРАВЛЕННАЯ) ===== */
 .video-panel {
     position: absolute;
     top: 20px;
     right: 20px;
-    width: 280px;
+    width: 320px;            /* Увеличено с 280px */
     background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(10px);
     border-radius: 16px;
-    padding: 15px;
+    padding: 12px;           /* Уменьшено с 15px */
     color: white;
     display: none;
     flex-direction: column;
@@ -197,11 +197,13 @@ body {
 .video-controls {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;        /* Если совсем не влезут — перенесутся */
+    justify-content: flex-end;
 }
 
 .video-btn {
-    width: 36px;
-    height: 36px;
+    width: 34px;            /* Уменьшено с 36px */
+    height: 34px;
     border-radius: 50%;
     border: none;
     background: rgba(255, 255, 255, 0.2);
@@ -346,17 +348,15 @@ body {
 }
 
 /* ==================================================================
-   МОБИЛЬНАЯ АДАПТАЦИЯ — ИСПРАВЛЕННАЯ, ВСЕ ЭЛЕМЕНТЫ ВИДИМЫ
+   МОБИЛЬНАЯ АДАПТАЦИЯ — ИДЕАЛЬНЫЙ ПОРЯДОК, ВСЁ ВИДНО
    ================================================================== */
 @media (max-width: 900px) {
-    /* Основной контейнер — вертикальная колонка */
     .board-container {
         flex-direction: column;
         height: 100vh;
-        width: 100vw;
     }
 
-    /* Верхняя панель (ID, имя, доступ) — всегда сверху */
+    /* Верхняя панель — всегда сверху */
     .top-bar {
         order: 0;
         width: 100%;
@@ -367,17 +367,17 @@ body {
         background: white;
     }
 
-    /* Основная область — flex-колонка, занимает всё пространство */
+    /* Основная область — колонка */
     .main-area {
         order: 1;
         display: flex;
         flex-direction: column;
         padding: 10px;
         flex: 1 1 0;
-        min-height: 0; /* важно для Firefox */
+        min-height: 0;
     }
 
-    /* Canvas-область — flex-контейнер, растягивается */
+    /* Canvas-область — flex-колонка, занимает всё свободное место */
     .canvas-area {
         display: flex;
         flex-direction: column;
@@ -391,7 +391,7 @@ body {
         position: relative;
     }
 
-    /* Панель видео — белый блок, отображается при старте */
+    /* Панель видео — белый блок, над доской */
     .video-panel {
         position: relative;
         top: auto;
@@ -403,7 +403,7 @@ body {
         border-radius: 12px;
         padding: 12px;
         margin-bottom: 10px;
-        display: none; /* будет показано через JS */
+        display: none;
         flex-shrink: 0;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
@@ -489,7 +489,7 @@ body {
         z-index: 200;
     }
 
-    /* Компактные элементы интерфейса */
+    /* Компактные элементы */
     .copy-btn span {
         display: none;
     }
@@ -526,9 +526,9 @@ body {
     }
 
     .video-btn {
-        width: 36px;
-        height: 36px;
-        font-size: 16px;
+        width: 34px;
+        height: 34px;
+        font-size: 15px;
     }
 
     .lock-btn {
@@ -580,9 +580,9 @@ body {
     }
 
     .video-btn {
-        width: 34px;
-        height: 34px;
-        font-size: 15px;
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
     }
 
     .properties-panel {
@@ -603,5 +603,11 @@ body {
 
     .properties-panel {
         bottom: 70px;
+    }
+
+    .video-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 13px;
     }
 }
