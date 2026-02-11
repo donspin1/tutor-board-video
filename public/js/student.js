@@ -1,4 +1,4 @@
-// student.js — ИСПРАВЛЕННАЯ ВЕРСИЯ (работает синхронизация и блокировка)
+// student.js — ИСПРАВЛЕННАЯ ВЕРСИЯ (видит рисунки, индикатор доступа)
 
 const socket = io();
 const urlParams = new URLSearchParams(window.location.search);
@@ -6,7 +6,7 @@ const roomId = urlParams.get('room');
 const userName = decodeURIComponent(urlParams.get('name') || 'Ученик');
 
 if (!roomId) {
-    alert('Не указан ID комнаты!');
+    alert('Нет ID комнаты');
     window.location.href = '/';
 }
 
@@ -29,6 +29,7 @@ canvas.freeDrawingBrush.color = '#000000';
 canvas.isDrawingMode = false;
 
 let currentTool = 'pencil';
+let hasAccess = true; // по умолчанию доступ есть
 
 // ---- UI ----
 const roomIdEl = document.getElementById('room-id');
@@ -37,11 +38,9 @@ if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
 const usernameEl = document.getElementById('username-display');
 if (usernameEl) usernameEl.innerHTML = `<i class="fas fa-user-graduate"></i> ${userName}`;
 
-// ---- Блокировка доступа (ОБЪЯВЛЯЕМ РАНЬШЕ) ----
-let hasAccess = true;
 const accessIndicator = document.getElementById('access-indicator');
 
-// ---- Инструменты (карандаш, ластик, выход) ----
+// ---- Инструменты ----
 const pencilBtn = document.getElementById('tool-pencil');
 const eraserBtn = document.getElementById('tool-eraser');
 const exitBtn = document.getElementById('exit-btn');
@@ -51,7 +50,7 @@ if (pencilBtn) {
         document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
         pencilBtn.classList.add('active');
         currentTool = 'pencil';
-        canvas.isDrawingMode = hasAccess; // только если доступ открыт
+        canvas.isDrawingMode = hasAccess;
     });
 }
 
@@ -65,17 +64,15 @@ if (eraserBtn) {
 }
 
 if (exitBtn) {
-    exitBtn.addEventListener('click', () => {
-        window.location.href = '/';
-    });
+    exitBtn.addEventListener('click', () => window.location.href = '/');
 }
 pencilBtn?.classList.add('active');
 
-// ---- Рисование (с проверкой доступа) ----
+// ---- Рисование ----
 canvas.on('path:created', (e) => {
     if (!hasAccess) {
         canvas.remove(e.path);
-        showNotification('Доступ к рисованию закрыт', 2000);
+        showNotification('Доступ закрыт', 2000);
         return;
     }
     e.path.set({ id: 'student-' + Date.now() });
@@ -92,18 +89,20 @@ canvas.on('mouse:down', (opt) => {
     }
 });
 
-// ---- Блокировка доступа (управление репетитором) ----
+// ---- БЛОКИРОВКА ДОСТУПА (ПОЛНОСТЬЮ РАБОЧАЯ) ----
 socket.on('admin-lock-status', (locked) => {
     hasAccess = !locked;
     canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
-    
+
+    // Меняем прозрачность кнопок (кроме выхода и видео)
     document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
-        if (btn.id !== 'exit-btn' && btn.id !== 'tool-video') {
+        if (!['exit-btn', 'tool-video'].includes(btn.id)) {
             btn.style.opacity = hasAccess ? '1' : '0.5';
             btn.style.pointerEvents = hasAccess ? 'auto' : 'none';
         }
     });
-    
+
+    // Обновляем индикатор
     if (accessIndicator) {
         if (hasAccess) {
             accessIndicator.style.background = 'var(--success)';
@@ -113,17 +112,17 @@ socket.on('admin-lock-status', (locked) => {
             accessIndicator.innerHTML = '<i class="fas fa-lock"></i> Доступ ограничен';
         }
     }
-    
-    showNotification(hasAccess ? 'Репетитор разрешил рисовать' : 'Репетитор ограничил доступ');
+
+    showNotification(hasAccess ? 'Доступ открыт' : 'Доступ закрыт');
 });
 
-// ---- Обработка несуществующей комнаты ----
-socket.on('room-not-found', (missingRoomId) => {
-    alert(`Комната с ID "${missingRoomId}" не найдена. Уточните ID у репетитора.`);
+// ---- НЕСУЩЕСТВУЮЩАЯ КОМНАТА ----
+socket.on('room-not-found', () => {
+    alert('Комната не найдена. Уточните ID у репетитора.');
     window.location.href = '/';
 });
 
-// ---- Синхронизация доски ----
+// ---- СИНХРОНИЗАЦИЯ ДОСКИ (ПОЛУЧАЕМ РИСУНКИ) ----
 socket.emit('join-room', roomId, 'student');
 
 socket.on('init-canvas', (data) => {
@@ -153,19 +152,16 @@ socket.on('clear-canvas', () => {
     canvas.backgroundColor = 'white';
 });
 
-// ---- Видеозвонок ----
+// ---- ВИДЕО ----
 if (typeof initWebRTC === 'function') {
     initWebRTC(socket, roomId, 'student');
-} else {
-    console.error('webrtc.js не загружен!');
 }
 
-// ---- Уведомления ----
+// ---- УВЕДОМЛЕНИЯ ----
 function showNotification(msg, duration = 3000) {
     const notif = document.getElementById('notification');
     if (notif) {
-        const textEl = document.getElementById('notification-text');
-        if (textEl) textEl.innerText = msg;
+        document.getElementById('notification-text').innerText = msg;
         notif.classList.add('show');
         setTimeout(() => notif.classList.remove('show'), duration);
     }

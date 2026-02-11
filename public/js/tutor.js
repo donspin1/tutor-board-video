@@ -1,4 +1,4 @@
-// tutor.js — полностью рабочая версия, кнопки копирования и блокировки работают
+// tutor.js — ИСПРАВЛЕННАЯ ВЕРСИЯ (замок, копирование, видео)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
     if (!roomId) {
-        alert('Ошибка: не указан ID комнаты');
         window.location.href = '/tutor-login.html';
         return;
     }
@@ -92,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ---- Рисование фигур ----
     canvas.on('mouse:down', (opt) => {
-        if (currentTool === 'line' || currentTool === 'rect' || currentTool === 'circle') {
+        if (['line', 'rect', 'circle'].includes(currentTool)) {
             isDrawingShape = true;
             const pointer = canvas.getPointer(opt.e);
             startX = pointer.x;
@@ -100,40 +99,24 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (currentTool === 'line') {
                 shape = new fabric.Line([startX, startY, startX, startY], {
-                    stroke: currentColor,
-                    strokeWidth: brushSize,
-                    selectable: false
+                    stroke: currentColor, strokeWidth: brushSize, selectable: false
                 });
             } else if (currentTool === 'rect') {
                 shape = new fabric.Rect({
-                    left: startX,
-                    top: startY,
-                    width: 0,
-                    height: 0,
-                    stroke: currentColor,
-                    strokeWidth: brushSize,
-                    fill: 'transparent',
-                    selectable: false
+                    left: startX, top: startY, width: 0, height: 0,
+                    stroke: currentColor, strokeWidth: brushSize, fill: 'transparent', selectable: false
                 });
             } else if (currentTool === 'circle') {
                 shape = new fabric.Circle({
-                    left: startX,
-                    top: startY,
-                    radius: 0,
-                    stroke: currentColor,
-                    strokeWidth: brushSize,
-                    fill: 'transparent',
-                    selectable: false
+                    left: startX, top: startY, radius: 0,
+                    stroke: currentColor, strokeWidth: brushSize, fill: 'transparent', selectable: false
                 });
             }
             canvas.add(shape);
         } else if (currentTool === 'text') {
             const pointer = canvas.getPointer(opt.e);
             const text = new fabric.IText('Текст', {
-                left: pointer.x,
-                top: pointer.y,
-                fontSize: 20,
-                fill: currentColor
+                left: pointer.x, top: pointer.y, fontSize: 20, fill: currentColor
             });
             canvas.add(text);
             text.enterEditing();
@@ -180,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('drawing-data', { roomId, object: e.path.toObject(['id']) });
     });
 
-    // ---- Загрузка изображений ----
+    // ---- Загрузка ----
     document.getElementById('tool-upload')?.addEventListener('click', () => {
         const input = document.createElement('input');
         input.type = 'file';
@@ -205,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ---- Очистка ----
     document.getElementById('tool-clear')?.addEventListener('click', () => {
-        if (confirm('Очистить всю доску?')) {
+        if (confirm('Очистить всё?')) {
             canvas.clear();
             canvas.backgroundColor = 'white';
             socket.emit('clear-room', roomId);
@@ -226,72 +209,42 @@ document.addEventListener('DOMContentLoaded', () => {
         link.click();
     });
 
-    // ---------- ИСПРАВЛЕННЫЕ КНОПКИ КОПИРОВАНИЯ ----------
-    function copyToClipboard(text, successMessage) {
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(() => {
-                showNotification(successMessage);
-            }).catch(() => fallbackCopy(text, successMessage));
+    // ---------- КОПИРОВАНИЕ ----------
+    function copyToClipboard(text, msg) {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(() => showNotification(msg));
         } else {
-            fallbackCopy(text, successMessage);
+            prompt('Скопируйте вручную:', text);
         }
-    }
-
-    function fallbackCopy(text, successMessage) {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-            document.execCommand('copy');
-            showNotification(successMessage);
-        } catch (err) {
-            prompt('Не удалось скопировать. Скопируйте вручную:', text);
-        }
-        document.body.removeChild(textarea);
     }
 
     const copyIdBtn = document.getElementById('copy-room-id');
     if (copyIdBtn) {
-        copyIdBtn.addEventListener('click', () => {
-            copyToClipboard(roomId, 'ID комнаты скопирован');
-        });
+        copyIdBtn.addEventListener('click', () => copyToClipboard(roomId, 'ID скопирован'));
     }
 
     const copyLinkBtn = document.getElementById('copy-student-link');
     if (copyLinkBtn) {
         copyLinkBtn.addEventListener('click', () => {
-            const baseUrl = window.location.origin;
-            const studentUrl = `${baseUrl}/student.html?room=${encodeURIComponent(roomId)}&name=Ученик`;
-            copyToClipboard(studentUrl, '✅ Ссылка для ученика скопирована');
+            const url = `${window.location.origin}/student.html?room=${encodeURIComponent(roomId)}&name=Ученик`;
+            copyToClipboard(url, 'Ссылка для ученика скопирована');
         });
     }
 
-    // ---- Управление доступом (блокировка) ----
+    // ---------- БЛОКИРОВКА (ИКОНКА ЗАМКА) ----------
     let isLocked = false;
     const lockBtn = document.getElementById('lock-btn');
     if (lockBtn) {
         lockBtn.addEventListener('click', () => {
             isLocked = !isLocked;
-            updateLockButton(isLocked);
+            lockBtn.classList.toggle('locked', isLocked);
+            lockBtn.innerHTML = isLocked ? '<i class="fas fa-lock"></i>' : '<i class="fas fa-unlock-alt"></i>';
             socket.emit('set-lock', { roomId, locked: isLocked });
-            showNotification(isLocked ? 'Доступ для учеников закрыт' : 'Доступ для учеников открыт');
+            showNotification(isLocked ? 'Доступ закрыт' : 'Доступ открыт');
         });
     }
 
-    function updateLockButton(locked) {
-        if (locked) {
-            lockBtn.style.background = 'var(--danger)';
-            lockBtn.innerHTML = '<i class="fas fa-lock"></i> Доступ закрыт';
-        } else {
-            lockBtn.style.background = 'var(--success)';
-            lockBtn.innerHTML = '<i class="fas fa-unlock"></i> Доступ открыт';
-        }
-    }
-
-    // ---- Socket.IO ----
+    // ---------- SOCKET.IO ----------
     socket.emit('join-room', roomId, 'tutor');
 
     socket.on('init-canvas', (data) => {
@@ -301,7 +254,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (data.locked !== undefined) {
             isLocked = data.locked;
-            if (lockBtn) updateLockButton(isLocked);
+            if (lockBtn) {
+                lockBtn.classList.toggle('locked', isLocked);
+                lockBtn.innerHTML = isLocked ? '<i class="fas fa-lock"></i>' : '<i class="fas fa-unlock-alt"></i>';
+            }
         }
     });
 
@@ -339,8 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showNotification(msg, duration = 3000) {
         const notif = document.getElementById('notification');
         if (notif) {
-            const textEl = document.getElementById('notification-text');
-            if (textEl) textEl.innerText = msg;
+            document.getElementById('notification-text').innerText = msg;
             notif.classList.add('show');
             setTimeout(() => notif.classList.remove('show'), duration);
         }

@@ -13,33 +13,24 @@ const io = new Server(server, {
     }
 });
 
-// Раздача статических файлов (HTML, CSS, JS)
 app.use(cors());
-app.use(express.json()); // для возможных POST-запросов (не обязательно, но пусть будет)
+app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Хранилище комнат в памяти
+// Хранилище комнат
 const rooms = new Map();
 
-// ---------- ВСЕ ОБРАБОТЧИКИ СОЕДИНЕНИЙ ----------
 io.on('connection', (socket) => {
     console.log('🔌 Подключен:', socket.id);
 
-    // -------------------------------------------------
-    // 1. Работа с комнатами и доской
-    // -------------------------------------------------
+    // ---------- ДОСКА ----------
     socket.on('join-room', (roomId, role) => {
-        console.log(`📥 ${role} пытается войти в комнату ${roomId}`);
+        console.log(`📥 ${role} вход в ${roomId}`);
 
         if (role === 'tutor') {
-            // Репетитор: создаём комнату, если её нет
             if (!rooms.has(roomId)) {
-                rooms.set(roomId, {
-                    objects: [],
-                    locked: false,
-                    background: null
-                });
-                console.log(`🆕 Комната ${roomId} создана репетитором`);
+                rooms.set(roomId, { objects: [], locked: false, background: null });
+                console.log(`🆕 Комната ${roomId} создана`);
             }
             socket.join(roomId);
             const room = rooms.get(roomId);
@@ -49,9 +40,7 @@ io.on('connection', (socket) => {
                 background: room.background
             });
         } else if (role === 'student') {
-            // Ученик: проверяем существование комнаты
             if (!rooms.has(roomId)) {
-                console.log(`❌ Комната ${roomId} не найдена`);
                 socket.emit('room-not-found', roomId);
                 return;
             }
@@ -65,23 +54,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Получение и рассылка объектов рисования
     socket.on('drawing-data', ({ roomId, object }) => {
         const room = rooms.get(roomId);
         if (room) {
-            // Обновляем хранилище
             const index = room.objects.findIndex(o => o.id === object.id);
-            if (index !== -1) {
-                room.objects[index] = object;
-            } else {
-                room.objects.push(object);
-            }
-            // Отправляем всем КРОМЕ отправителя
+            if (index !== -1) room.objects[index] = object;
+            else room.objects.push(object);
             socket.to(roomId).emit('draw-to-client', object);
         }
     });
 
-    // Удаление объекта
     socket.on('remove-object', ({ roomId, id }) => {
         const room = rooms.get(roomId);
         if (room) {
@@ -90,7 +72,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Полная очистка комнаты
     socket.on('clear-room', (roomId) => {
         const room = rooms.get(roomId);
         if (room) {
@@ -100,7 +81,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Блокировка/разблокировка доступа для учеников
     socket.on('set-lock', ({ roomId, locked }) => {
         const room = rooms.get(roomId);
         if (room) {
@@ -109,18 +89,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Установка фона (PDF/изображение)
-    socket.on('set-background', ({ roomId, background }) => {
-        const room = rooms.get(roomId);
-        if (room) {
-            room.background = background;
-            socket.to(roomId).emit('update-background', background);
-        }
-    });
-
-    // -------------------------------------------------
-    // 2. Видеозвонки (WebRTC сигнализация)
-    // -------------------------------------------------
+    // ---------- ВИДЕО ----------
     socket.on('join-video-room', ({ roomId, peerId, role }) => {
         socket.join(`video-${roomId}`);
         socket.to(`video-${roomId}`).emit('user-joined', { peerId, role });
@@ -143,19 +112,11 @@ io.on('connection', (socket) => {
         io.to(toPeerId).emit('receive-ice-candidate', { from: socket.id, candidate });
     });
 
-    socket.on('video-toggle', ({ roomId, userId, kind, enabled }) => {
-        socket.to(`video-${roomId}`).emit('peer-video-toggle', { userId, kind, enabled });
-    });
-
-    // -------------------------------------------------
-    // 3. Отключение пользователя
-    // -------------------------------------------------
     socket.on('disconnect', () => {
         console.log('❌ Отключен:', socket.id);
     });
 });
 
-// ---------- ЗАПУСК СЕРВЕРА ----------
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`✅ Сервер запущен на порту ${PORT}`);
