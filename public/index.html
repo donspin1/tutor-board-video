@@ -1,120 +1,115 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const path = require('path');
-const cors = require('cors');
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TutorBoard — Вход для ученика</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, #fff, #e2e8f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .card {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 400px;
+            color: #1e293b;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 16px;
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 16px;
+            transition: 0.2s;
+        }
+        .btn-primary {
+            background: #6366f1;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #4f46e5;
+        }
+        .tutor-link {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .tutor-link a {
+            color: #6366f1;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .tutor-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>ProTutorBoard</h1>
+    <div class="card">
+        <h2 style="margin-bottom:20px;">Вход в комнату ученика</h2>
+        <div class="input-group">
+            <label>ID комнаты (от репетитора)</label>
+            <input type="text" id="roomId" placeholder="Например, ABC123">
+        </div>
+        <div class="input-group">
+            <label>Ваше имя</label>
+            <input type="text" id="userName" placeholder="Как вас зовут?">
+        </div>
+        <button class="btn btn-primary" onclick="enterAsStudent()">Войти в комнату</button>
+        <div class="tutor-link">
+            <a href="/tutor-login.html">Вход для репетитора →</a>
+        </div>
+    </div>
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
-
-const rooms = new Map();
-
-io.on('connection', (socket) => {
-    console.log('🔌 Подключен:', socket.id);
-
-    // ---------- ДОСКА ----------
-    socket.on('join-room', (roomId, role) => {
-        console.log(`📥 ${role} вход в ${roomId}`);
-
-        if (role === 'tutor') {
-            if (!rooms.has(roomId)) {
-                rooms.set(roomId, { objects: [], locked: false, background: null });
-                console.log(`🆕 Комната ${roomId} создана`);
-            }
-            socket.join(roomId);
-            const room = rooms.get(roomId);
-            socket.emit('init-canvas', {
-                objects: room.objects,
-                locked: room.locked,
-                background: room.background
-            });
-        } else if (role === 'student') {
-            if (!rooms.has(roomId)) {
-                socket.emit('room-not-found', roomId);
+    <script>
+        function enterAsStudent() {
+            const room = document.getElementById('roomId').value.trim();
+            if (!room) {
+                alert('Введите ID комнаты от репетитора!');
                 return;
             }
-            socket.join(roomId);
-            const room = rooms.get(roomId);
-            socket.emit('init-canvas', {
-                objects: room.objects,
-                locked: room.locked,
-                background: room.background
-            });
+            const name = document.getElementById('userName').value || 'Ученик';
+            window.location.href = `/student.html?room=${encodeURIComponent(room)}&name=${encodeURIComponent(name)}`;
         }
-    });
-
-    socket.on('drawing-data', ({ roomId, object }) => {
-        const room = rooms.get(roomId);
-        if (room) {
-            const index = room.objects.findIndex(o => o.id === object.id);
-            if (index !== -1) room.objects[index] = object;
-            else room.objects.push(object);
-            socket.to(roomId).emit('draw-to-client', object);
-        }
-    });
-
-    socket.on('remove-object', ({ roomId, id }) => {
-        const room = rooms.get(roomId);
-        if (room) {
-            room.objects = room.objects.filter(o => o.id !== id);
-            socket.to(roomId).emit('remove-object', id);
-        }
-    });
-
-    socket.on('clear-room', (roomId) => {
-        const room = rooms.get(roomId);
-        if (room) {
-            room.objects = [];
-            room.background = null;
-            io.to(roomId).emit('clear-canvas');
-        }
-    });
-
-    socket.on('set-lock', ({ roomId, locked }) => {
-        const room = rooms.get(roomId);
-        if (room) {
-            room.locked = locked;
-            io.to(roomId).emit('admin-lock-status', locked);
-        }
-    });
-
-    // ---------- ВИДЕО ----------
-    socket.on('join-video-room', ({ roomId, peerId, role }) => {
-        socket.join(`video-${roomId}`);
-        socket.to(`video-${roomId}`).emit('user-joined', { peerId, role });
-    });
-
-    socket.on('leave-video-room', ({ roomId, peerId }) => {
-        socket.leave(`video-${roomId}`);
-        socket.to(`video-${roomId}`).emit('user-left', peerId);
-    });
-
-    socket.on('send-offer', ({ toPeerId, offer }) => {
-        io.to(toPeerId).emit('receive-offer', { from: socket.id, offer });
-    });
-
-    socket.on('send-answer', ({ toPeerId, answer }) => {
-        io.to(toPeerId).emit('receive-answer', { from: socket.id, answer });
-    });
-
-    socket.on('send-ice-candidate', ({ toPeerId, candidate }) => {
-        io.to(toPeerId).emit('receive-ice-candidate', { from: socket.id, candidate });
-    });
-
-    socket.on('disconnect', () => {
-        console.log('❌ Отключен:', socket.id);
-    });
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+    </script>
+</body>
+</html>
