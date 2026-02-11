@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProTutorBoard — Вход</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        .landing {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            text-align: center;
+            color: white;
+        }
+        .card {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 400px;
+            color: #1e293b;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #fff, #e2e8f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 16px;
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 16px;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-secondary {
+            background: #f1f5f9;
+            color: var(--dark);
+        }
+        .btn-primary:hover { background: var(--primary-dark); }
+    </style>
+</head>
+<body>
+    <div class="landing">
+        <h1>ProTutorBoard</h1>
+        <div class="card">
+            <h2 style="margin-bottom:20px;">Начать занятие</h2>
+            <div class="input-group">
+                <label>ID комнаты</label>
+                <input type="text" id="roomId" placeholder="Введите ID или оставьте пустым">
+            </div>
+            <div class="input-group">
+                <label>Ваше имя</label>
+                <input type="text" id="userName" placeholder="Как вас зовут?">
+            </div>
+            <button class="btn btn-primary" onclick="enterAsTutor()">Войти как репетитор</button>
+            <button class="btn btn-secondary" onclick="enterAsStudent()">Войти как ученик</button>
+        </div>
+    </div>
+    <script>
+        function generateRoomId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        function enterAsTutor() {
+            const room = document.getElementById('roomId').value || generateRoomId();
+            const name = document.getElementById('userName').value || 'Репетитор';
+            window.location.href = `/tutor.html?room=${encodeURIComponent(room)}&name=${encodeURIComponent(name)}`;
+        }
+        function enterAsStudent() {
+            const room = document.getElementById('roomId').value;
+            if (!room) { alert('Введите ID комнаты от репетитора'); return; }
+            const name = document.getElementById('userName').value || 'Ученик';
+            window.location.href = `/student.html?room=${encodeURIComponent(room)}&name=${encodeURIComponent(name)}`;
+        }
+    </script>
+</body>
+</html>

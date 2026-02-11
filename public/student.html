@@ -1,0 +1,119 @@
+const socket = io();
+const urlParams = new URLSearchParams(window.location.search);
+const roomId = urlParams.get('room');
+const userName = decodeURIComponent(urlParams.get('name') || 'Ученик');
+
+if (!roomId) {
+  alert('Не указан ID комнаты!');
+  window.location.href = '/';
+}
+
+// ---- Canvas ----
+const canvas = new fabric.Canvas('canvas', { backgroundColor: 'white', selection: false });
+function resizeCanvas() {
+  const container = document.querySelector('.canvas-area');
+  canvas.setWidth(container.clientWidth);
+  canvas.setHeight(container.clientHeight);
+  canvas.renderAll();
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+canvas.freeDrawingBrush.width = 5;
+canvas.freeDrawingBrush.color = '#000000';
+canvas.isDrawingMode = false;
+
+let currentTool = 'pencil';
+let brushSize = 5;
+
+// ---- UI ----
+document.getElementById('room-id').innerText = `ID: ${roomId}`;
+document.getElementById('username-display').innerHTML = `<i class="fas fa-user-graduate"></i> ${userName}`;
+
+// ---- Инструменты (только карандаш, ластик) ----
+document.getElementById('tool-pencil').addEventListener('click', () => {
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tool-pencil').classList.add('active');
+  currentTool = 'pencil';
+  canvas.isDrawingMode = true;
+});
+document.getElementById('tool-eraser').addEventListener('click', () => {
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tool-eraser').classList.add('active');
+  currentTool = 'eraser';
+  canvas.isDrawingMode = false;
+});
+document.getElementById('tool-pencil').classList.add('active');
+
+// ---- Рисование ----
+canvas.on('path:created', (e) => {
+  e.path.set({ id: 'student-' + Date.now() });
+  socket.emit('drawing-data', { roomId, object: e.path.toObject(['id']) });
+});
+
+canvas.on('mouse:down', (opt) => {
+  if (currentTool === 'eraser') {
+    const target = canvas.findTarget(opt.e);
+    if (target) {
+      canvas.remove(target);
+      socket.emit('remove-object', { roomId, id: target.id });
+    }
+  }
+});
+
+// ---- Блокировка доступа ----
+let hasAccess = true;
+socket.on('admin-lock-status', (locked) => {
+  hasAccess = !locked;
+  canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
+  document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.style.opacity = hasAccess ? '1' : '0.5';
+    btn.style.pointerEvents = hasAccess ? 'auto' : 'none';
+  });
+  showNotification(hasAccess ? 'Доступ разрешён' : 'Доступ ограничен репетитором');
+});
+
+// ---- Синхронизация доски ----
+socket.emit('join-room', roomId);
+
+socket.on('init-canvas', (data) => {
+  canvas.loadFromJSON(data, () => canvas.renderAll());
+});
+
+socket.on('draw-to-client', (obj) => {
+  fabric.util.enlivenObjects([obj], (objects) => {
+    const existing = canvas.getObjects().find(o => o.id === obj.id);
+    if (existing) canvas.remove(existing);
+    canvas.add(objects[0]);
+    canvas.renderAll();
+  });
+});
+
+socket.on('remove-object', (id) => {
+  const obj = canvas.getObjects().find(o => o.id === id);
+  if (obj) canvas.remove(obj);
+});
+
+socket.on('clear-canvas', () => {
+  canvas.clear();
+  canvas.backgroundColor = 'white';
+});
+
+// ---- Видеозвонок (ученик) ----
+initWebRTC(socket, roomId, 'student');
+
+// ---- Выход ----
+document.getElementById('exit-btn')?.addEventListener('click', () => {
+  window.location.href = '/';
+});
+
+// ---- Уведомления ----
+function showNotification(msg) {
+  const notif = document.getElementById('notification');
+  if (notif) {
+    document.getElementById('notification-text').innerText = msg;
+    notif.classList.add('show');
+    setTimeout(() => notif.classList.remove('show'), 3000);
+  }
+}
