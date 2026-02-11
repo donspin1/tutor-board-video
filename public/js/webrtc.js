@@ -1,13 +1,58 @@
-// webrtc.js — ФИНАЛЬНАЯ СТАБИЛЬНАЯ ВЕРСИЯ (с отзеркаливанием камеры)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (перетаскивание + сброс при выходе)
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
-let webrtcInitialized = false; // Флаг защиты от повторной инициализации
+let webrtcInitialized = false;
+
+// ---------- ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ ----------
+function makeDraggable(element, handle) {
+    if (!element || !handle) return;
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    
+    handle.style.cursor = 'move';
+    handle.addEventListener('mousedown', dragMouseDown);
+    
+    function dragMouseDown(e) {
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.addEventListener('mousemove', elementDrag);
+        document.addEventListener('mouseup', closeDragElement);
+    }
+
+    function elementDrag(e) {
+        e.preventDefault();
+        pos1 = pos3 - e.clientX;
+        pos2 = pos4 - e.clientY;
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        // Новые координаты
+        let top = element.offsetTop - pos2;
+        let left = element.offsetLeft - pos1;
+        
+        // Ограничения (чтобы не утащить за пределы canvas-area)
+        const canvasArea = document.querySelector('.canvas-area');
+        if (canvasArea) {
+            top = Math.max(0, Math.min(top, canvasArea.clientHeight - element.clientHeight));
+            left = Math.max(0, Math.min(left, canvasArea.clientWidth - element.clientWidth));
+        }
+        
+        element.style.top = top + 'px';
+        element.style.left = left + 'px';
+        element.style.right = 'auto';
+        element.style.bottom = 'auto';
+        element.style.transform = 'none';
+    }
+
+    function closeDragElement() {
+        document.removeEventListener('mousemove', elementDrag);
+        document.removeEventListener('mouseup', closeDragElement);
+    }
+}
 
 // ---------- ИНИЦИАЛИЗАЦИЯ ----------
 function initWebRTC(socket, roomId, role) {
-    // Защита от повторной инициализации (например, при обновлении страницы)
     if (webrtcInitialized) {
         console.log('⚠️ WebRTC уже инициализирован, пропускаем');
         return;
@@ -20,17 +65,15 @@ function initWebRTC(socket, roomId, role) {
     console.log(`📹 WebRTC инициализирован для ${role}`);
     webrtcInitialized = true;
 
-    // Кнопка видеозвонка (открыть/закрыть панель)
     const videoBtn = document.getElementById('tool-video');
     if (videoBtn) {
-        videoBtn.removeEventListener('click', toggleVideoCall); // удаляем старый, если был
+        videoBtn.removeEventListener('click', toggleVideoCall);
         videoBtn.addEventListener('click', toggleVideoCall);
         console.log('✅ Кнопка video привязана');
     } else {
         console.warn('⚠️ Кнопка tool-video не найдена');
     }
 
-    // ---------- КНОПКИ УПРАВЛЕНИЯ ЗВОНКОМ ----------
     const toggleMic = document.getElementById('toggle-mic');
     if (toggleMic) {
         toggleMic.removeEventListener('click', toggleMicrophone);
@@ -65,7 +108,6 @@ function initWebRTC(socket, roomId, role) {
         console.log('✅ Кнопка toggle-screen привязана для репетитора');
     }
 
-    // Устанавливаем начальное состояние кнопок (если поток уже есть)
     if (localStream) {
         updateMicButton(localStream.getAudioTracks()[0]?.enabled ?? false);
         updateCamButton(localStream.getVideoTracks()[0]?.enabled ?? false);
@@ -92,26 +134,26 @@ async function startVideoCall() {
                 audio: true 
             }).catch(err => {
                 console.error('Ошибка getUserMedia:', err);
-                // Пробуем только аудио
                 return navigator.mediaDevices.getUserMedia({ video: false, audio: true });
             });
             
-            if (!localStream) {
-                throw new Error('Не удалось получить доступ к устройствам');
-            }
+            if (!localStream) throw new Error('Не удалось получить доступ к устройствам');
             console.log('✅ Поток получен');
         }
 
         isVideoActive = true;
-
-        // Показываем панель видео
         const panel = document.getElementById('video-panel');
-        if (panel) panel.style.display = 'flex';
+        if (panel) {
+            panel.style.display = 'flex';
+            // Делаем панель перетаскиваемой (только один раз)
+            if (!panel.dataset.draggable) {
+                makeDraggable(panel, panel.querySelector('.video-header'));
+                panel.dataset.draggable = 'true';
+            }
+        }
 
-        // Показываем своё видео
         addLocalVideo();
-
-        // Присоединяемся к видеокомнате
+        
         window.socket.emit('join-video-room', {
             roomId: window.roomId,
             peerId: window.socket.id,
@@ -119,7 +161,6 @@ async function startVideoCall() {
         });
         console.log(`📡 Присоединились к видеокомнате ${window.roomId}`);
 
-        // Активируем кнопки (по умолчанию включены)
         updateMicButton(true);
         updateCamButton(true);
     } catch (err) {
@@ -158,7 +199,6 @@ function stopVideoCall() {
     }
     console.log('👋 Покинули видеокомнату');
     
-    // Сбрасываем состояние кнопок
     updateMicButton(false);
     updateCamButton(false);
 }
@@ -176,7 +216,6 @@ function addVideoElement(peerId, stream, isLocal = false) {
         return;
     }
 
-    // Удаляем старый элемент, если такой уже есть
     const existing = document.getElementById(`video-${peerId}`);
     if (existing) existing.remove();
 
@@ -190,7 +229,6 @@ function addVideoElement(peerId, stream, isLocal = false) {
     video.playsInline = true;
     if (isLocal) {
         video.muted = true;
-        // 🔥 ОТЗЕРКАЛИВАНИЕ для своего видео (эффект зеркала)
         video.style.transform = 'scaleX(-1)';
     }
 
@@ -218,14 +256,12 @@ function removeVideoElement(peerId) {
 function toggleMicrophone() {
     console.log('🎤 toggleMicrophone вызван');
     if (!localStream) {
-        console.log('🎤 Нет потока, запускаем видео...');
         startVideoCall().then(() => {
             setTimeout(() => {
                 const track = localStream?.getAudioTracks()[0];
                 if (track) {
                     track.enabled = !track.enabled;
                     updateMicButton(track.enabled);
-                    console.log(`🎤 Микрофон ${track.enabled ? 'включён' : 'выключен'}`);
                 }
             }, 500);
         });
@@ -235,7 +271,6 @@ function toggleMicrophone() {
     if (track) {
         track.enabled = !track.enabled;
         updateMicButton(track.enabled);
-        console.log(`🎤 Микрофон ${track.enabled ? 'включён' : 'выключен'}`);
     }
 }
 
@@ -243,11 +278,7 @@ function updateMicButton(enabled) {
     const btn = document.getElementById('toggle-mic');
     if (btn) {
         btn.innerHTML = enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
-        if (enabled) btn.classList.add('active');
-        else btn.classList.remove('active');
-        console.log(`🎤 Иконка микрофона обновлена: ${enabled ? 'вкл' : 'выкл'}`);
-    } else {
-        console.warn('⚠️ toggle-mic не найден при обновлении');
+        btn.classList.toggle('active', enabled);
     }
 }
 
@@ -255,14 +286,12 @@ function updateMicButton(enabled) {
 function toggleCamera() {
     console.log('📷 toggleCamera вызван');
     if (!localStream) {
-        console.log('📷 Нет потока, запускаем видео...');
         startVideoCall().then(() => {
             setTimeout(() => {
                 const track = localStream?.getVideoTracks()[0];
                 if (track) {
                     track.enabled = !track.enabled;
                     updateCamButton(track.enabled);
-                    console.log(`📷 Камера ${track.enabled ? 'включена' : 'выключена'}`);
                 }
             }, 500);
         });
@@ -272,7 +301,6 @@ function toggleCamera() {
     if (track) {
         track.enabled = !track.enabled;
         updateCamButton(track.enabled);
-        console.log(`📷 Камера ${track.enabled ? 'включена' : 'выключена'}`);
     }
 }
 
@@ -280,21 +308,16 @@ function updateCamButton(enabled) {
     const btn = document.getElementById('toggle-cam');
     if (btn) {
         btn.innerHTML = enabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
-        if (enabled) btn.classList.add('active');
-        else btn.classList.remove('active');
-        console.log(`📷 Иконка камеры обновлена: ${enabled ? 'вкл' : 'выкл'}`);
-    } else {
-        console.warn('⚠️ toggle-cam не найден при обновлении');
+        btn.classList.toggle('active', enabled);
     }
 }
 
-// ---------- ДЕМОНСТРАЦИЯ ЭКРАНА (ТОЛЬКО РЕПЕТИТОР) ----------
+// ---------- ДЕМОНСТРАЦИЯ ЭКРАНА ----------
 async function startScreenShare() {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const videoTrack = screenStream.getVideoTracks()[0];
         videoTrack.onended = () => {
-            // Возвращаем камеру после завершения демонстрации
             navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
                 const newTrack = stream.getVideoTracks()[0];
                 replaceVideoTrack(newTrack);
@@ -333,11 +356,7 @@ function setupSocketListeners() {
 
     socket.on('user-joined', async ({ peerId, role }) => {
         console.log(`👤 user joined: ${peerId} (${role})`);
-
-        if (!localStream) {
-            console.log('📞 Получен входящий вызов, запускаем видео...');
-            await startVideoCall();
-        }
+        if (!localStream) await startVideoCall();
 
         const pc = new RTCPeerConnection({
             iceServers: [
@@ -347,22 +366,15 @@ function setupSocketListeners() {
         });
         peerConnections[peerId] = pc;
 
-        localStream.getTracks().forEach(track => {
-            pc.addTrack(track, localStream);
-            console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
-        });
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
         pc.onicecandidate = (e) => {
             if (e.candidate) {
-                socket.emit('send-ice-candidate', { 
-                    toPeerId: peerId, 
-                    candidate: e.candidate 
-                });
+                socket.emit('send-ice-candidate', { toPeerId: peerId, candidate: e.candidate });
             }
         };
 
         pc.ontrack = (e) => {
-            console.log(`📥 Получен трек ${e.track.kind} от ${peerId}`);
             if (!document.getElementById(`video-${peerId}`)) {
                 addVideoElement(peerId, e.streams[0], false);
             }
@@ -371,16 +383,11 @@ function setupSocketListeners() {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         socket.emit('send-offer', { toPeerId: peerId, offer });
-        console.log(`📤 Offer отправлен ${peerId}`);
     });
 
     socket.on('receive-offer', async ({ from, offer }) => {
         console.log(`📩 Получен offer от ${from}`);
-
-        if (!localStream) {
-            console.log('📞 Получен offer, запускаем видео...');
-            await startVideoCall();
-        }
+        if (!localStream) await startVideoCall();
 
         const pc = new RTCPeerConnection({
             iceServers: [
@@ -390,21 +397,15 @@ function setupSocketListeners() {
         });
         peerConnections[from] = pc;
 
-        localStream.getTracks().forEach(track => {
-            pc.addTrack(track, localStream);
-        });
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
         pc.onicecandidate = (e) => {
             if (e.candidate) {
-                socket.emit('send-ice-candidate', { 
-                    toPeerId: from, 
-                    candidate: e.candidate 
-                });
+                socket.emit('send-ice-candidate', { toPeerId: from, candidate: e.candidate });
             }
         };
 
         pc.ontrack = (e) => {
-            console.log(`📥 Получен трек ${e.track.kind} от ${from}`);
             if (!document.getElementById(`video-${from}`)) {
                 addVideoElement(from, e.streams[0], false);
             }
@@ -414,25 +415,21 @@ function setupSocketListeners() {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('send-answer', { toPeerId: from, answer });
-        console.log(`📤 Answer отправлен ${from}`);
     });
 
     socket.on('receive-answer', ({ from, answer }) => {
-        console.log(`📩 Получен answer от ${from}`);
         if (peerConnections[from]) {
             peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer));
         }
     });
 
     socket.on('receive-ice-candidate', ({ from, candidate }) => {
-        console.log(`🧊 Получен ICE-кандидат от ${from}`);
         if (peerConnections[from]) {
             peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate));
         }
     });
 
     socket.on('user-left', (peerId) => {
-        console.log(`👋 user left: ${peerId}`);
         if (peerConnections[peerId]) {
             peerConnections[peerId].close();
             delete peerConnections[peerId];

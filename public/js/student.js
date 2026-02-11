@@ -1,7 +1,6 @@
-// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (автостарт без дублирования камеры)
+// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (перетаскивание свойств, сброс при выходе)
 
 document.addEventListener('DOMContentLoaded', () => {
-    // ---------- ИНИЦИАЛИЗАЦИЯ ----------
     const socket = io();
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
@@ -67,7 +66,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (exitBtn) {
-        exitBtn.addEventListener('click', () => window.location.href = '/');
+        exitBtn.addEventListener('click', () => {
+            // Завершаем видеозвонок перед выходом
+            if (typeof stopVideoCall === 'function' && window.isVideoActive) {
+                stopVideoCall();
+            }
+            window.location.href = '/';
+        });
     }
     pencilBtn?.classList.add('active');
 
@@ -92,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ---- БЛОКИРОВКА ДОСТУПА ----
+    // ---- Блокировка доступа ----
     socket.on('admin-lock-status', (locked) => {
         hasAccess = !locked;
         canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
@@ -113,17 +118,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 accessIndicator.innerHTML = '<i class="fas fa-lock"></i> Доступ ограничен';
             }
         }
-
         showNotification(hasAccess ? 'Доступ открыт' : 'Доступ закрыт');
     });
 
-    // ---- НЕСУЩЕСТВУЮЩАЯ КОМНАТА ----
+    // ---- Несуществующая комната ----
     socket.on('room-not-found', () => {
         alert('Комната не найдена. Уточните ID у репетитора.');
         window.location.href = '/';
     });
 
-    // ---- СИНХРОНИЗАЦИЯ ДОСКИ ----
+    // ---- Синхронизация доски ----
     socket.emit('join-room', roomId, 'student');
 
     socket.on('init-canvas', (data) => {
@@ -153,35 +157,36 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.backgroundColor = 'white';
     });
 
-    // ---------- ВИДЕО: ИНИЦИАЛИЗАЦИЯ И АВТОСТАРТ ----------
+    // ---------- ВИДЕО ----------
     if (typeof initWebRTC === 'function') {
-        // Инициализируем WebRTC (привязка кнопок)
         initWebRTC(socket, roomId, 'student');
         
-        // АВТОСТАРТ С ЗАЩИТОЙ ОТ ДУБЛИРОВАНИЯ
+        // Автостарт с защитой от дублирования
         setTimeout(() => {
-            // Если видеозвонок уже активен — сначала завершаем его
             if (typeof window.isVideoActive !== 'undefined' && window.isVideoActive === true) {
                 console.log('🔄 Обнаружен активный видеозвонок, завершаем...');
-                if (typeof stopVideoCall === 'function') {
-                    stopVideoCall();
-                }
+                if (typeof stopVideoCall === 'function') stopVideoCall();
             }
-            // Затем запускаем новый (с небольшой задержкой)
             setTimeout(() => {
                 console.log('🎥 Автостарт видео для ученика');
                 if (typeof startVideoCall === 'function') {
-                    startVideoCall().catch(err => {
-                        console.warn('Не удалось автостартовать видео:', err);
-                    });
+                    startVideoCall().catch(err => console.warn('Не удалось автостартовать видео:', err));
                 }
             }, 300);
         }, 1000);
-    } else {
-        console.error('❌ webrtc.js не загружен!');
     }
 
-    // ---- УВЕДОМЛЕНИЯ ----
+    // ---------- ПЕРЕТАСКИВАНИЕ ПАНЕЛИ СВОЙСТВ ----------
+    const propsPanel = document.getElementById('properties-panel');
+    if (propsPanel && typeof makeDraggable === 'function') {
+        const handle = propsPanel.querySelector('.panel-header');
+        if (handle && !propsPanel.dataset.draggable) {
+            makeDraggable(propsPanel, handle);
+            propsPanel.dataset.draggable = 'true';
+        }
+    }
+
+    // ---- Уведомления ----
     function showNotification(msg, duration = 3000) {
         const notif = document.getElementById('notification');
         if (notif) {

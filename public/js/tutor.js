@@ -1,4 +1,4 @@
-// tutor.js — ИСПРАВЛЕННАЯ ВЕРСИЯ (замок, копирование, видео)
+// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (перетаскивание панели свойств, сброс видео при выходе)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const userName = decodeURIComponent(urlParams.get('name') || 'Репетитор');
 
-    // ---- Canvas ----
+    // ---------- CANVAS ----------
     const canvas = new fabric.Canvas('canvas', { backgroundColor: 'white' });
 
     function resizeCanvas() {
@@ -35,14 +35,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDrawingShape = false;
     let startX, startY, shape;
 
-    // ---- UI ----
+    // ---------- UI ----------
     const roomIdEl = document.getElementById('room-id');
     if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
     
     const usernameEl = document.getElementById('username-display');
     if (usernameEl) usernameEl.innerHTML = `<i class="fas fa-user"></i> ${userName}`;
 
-    // ---- Цветовая палитра ----
+    // ---------- ЦВЕТОВАЯ ПАЛИТРА ----------
     const colors = ['#000000', '#ffffff', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#64748b'];
     const palette = document.getElementById('color-palette');
     if (palette) {
@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ---- Размер кисти ----
+    // ---------- РАЗМЕР КИСТИ ----------
     const brushSlider = document.getElementById('brush-slider');
     if (brushSlider) {
         brushSlider.addEventListener('input', (e) => {
@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ---- Инструменты ----
+    // ---------- ИНСТРУМЕНТЫ ----------
     document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             if (btn.id === 'tool-video') return;
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('tool-pencil')?.classList.add('active');
 
-    // ---- Рисование фигур ----
+    // ---------- РИСОВАНИЕ ФИГУР ----------
     canvas.on('mouse:down', (opt) => {
         if (['line', 'rect', 'circle'].includes(currentTool)) {
             isDrawingShape = true;
@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('drawing-data', { roomId, object: e.path.toObject(['id']) });
     });
 
-    // ---- Загрузка ----
+    // ---------- ЗАГРУЗКА ИЗОБРАЖЕНИЙ ----------
     document.getElementById('tool-upload')?.addEventListener('click', () => {
         const input = document.createElement('input');
         input.type = 'file';
@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
         input.click();
     });
 
-    // ---- Очистка ----
+    // ---------- ОЧИСТКА ----------
     document.getElementById('tool-clear')?.addEventListener('click', () => {
         if (confirm('Очистить всё?')) {
             canvas.clear();
@@ -201,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('properties-panel')?.classList.remove('active');
     });
 
-    // ---- Сохранение ----
+    // ---------- СОХРАНЕНИЕ ----------
     document.getElementById('tool-save')?.addEventListener('click', () => {
         const link = document.createElement('a');
         link.download = `board-${roomId}.png`;
@@ -209,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
         link.click();
     });
 
-    // ---------- КОПИРОВАНИЕ ----------
+    // ---------- КОПИРОВАНИЕ ID ----------
     function copyToClipboard(text, msg) {
         if (navigator.clipboard) {
             navigator.clipboard.writeText(text).then(() => showNotification(msg));
@@ -281,17 +281,37 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.backgroundColor = 'white';
     });
 
-    // ---- WebRTC ----
+    // ---------- WEBRTC ----------
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'tutor');
     }
 
-    // ---- Панель свойств ----
+    // ---------- ПЕРЕТАСКИВАНИЕ ПАНЕЛИ СВОЙСТВ ----------
+    const propsPanel = document.getElementById('properties-panel');
+    if (propsPanel && typeof makeDraggable === 'function') {
+        const handle = propsPanel.querySelector('.panel-header');
+        if (handle && !propsPanel.dataset.draggable) {
+            makeDraggable(propsPanel, handle);
+            propsPanel.dataset.draggable = 'true';
+        }
+    }
+
+    // ---------- СБРОС ВИДЕО ПРИ ВЫХОДЕ ----------
+    const exitBtn = document.getElementById('tool-exit');
+    if (exitBtn) {
+        exitBtn.addEventListener('click', () => {
+            if (typeof stopVideoCall === 'function' && window.isVideoActive) {
+                stopVideoCall();
+            }
+        });
+    }
+
+    // ---------- ЗАКРЫТИЕ ПАНЕЛИ СВОЙСТВ ----------
     document.getElementById('close-properties')?.addEventListener('click', () => {
         document.getElementById('properties-panel')?.classList.remove('active');
     });
 
-    // ---- Уведомления ----
+    // ---------- УВЕДОМЛЕНИЯ ----------
     function showNotification(msg, duration = 3000) {
         const notif = document.getElementById('notification');
         if (notif) {
