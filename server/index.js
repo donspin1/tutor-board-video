@@ -23,25 +23,22 @@ io.on('connection', (socket) => {
     console.log('🔌 Подключен:', socket.id);
 
     // ---------- РАБОТА С ДОСКОЙ ----------
-    // Добавляем параметр role: 'tutor' или 'student'
     socket.on('join-room', (roomId, role) => {
         console.log(`📥 ${role} пытается войти в комнату ${roomId}`);
 
         if (role === 'tutor') {
-            // Репетитор: создаём комнату, если её нет
             if (!rooms.has(roomId)) {
                 rooms.set(roomId, { objects: [], locked: false, background: null });
                 console.log(`🆕 Комната ${roomId} создана репетитором`);
             }
             socket.join(roomId);
             const room = rooms.get(roomId);
-            socket.emit('init-canvas', { 
-                objects: room.objects, 
-                locked: room.locked, 
-                background: room.background 
+            socket.emit('init-canvas', {
+                objects: room.objects,
+                locked: room.locked,
+                background: room.background
             });
         } else if (role === 'student') {
-            // Ученик: проверяем, существует ли комната
             if (!rooms.has(roomId)) {
                 console.log(`❌ Комната ${roomId} не найдена`);
                 socket.emit('room-not-found', roomId);
@@ -49,18 +46,14 @@ io.on('connection', (socket) => {
             }
             socket.join(roomId);
             const room = rooms.get(roomId);
-            socket.emit('init-canvas', { 
-                objects: room.objects, 
-                locked: room.locked, 
-                background: room.background 
+            socket.emit('init-canvas', {
+                objects: room.objects,
+                locked: room.locked,
+                background: room.background
             });
         }
     });
 
-    // Остальные обработчики (drawing-data, remove-object, clear-room, set-lock, set-background, видео)
-    // без изменений — они уже есть в предыдущей версии
-    // ... (сохраняем их полностью)
-    // Копируем из предыдущего рабочего сервера
     socket.on('drawing-data', ({ roomId, object }) => {
         const room = rooms.get(roomId);
         if (room) {

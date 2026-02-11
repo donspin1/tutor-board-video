@@ -1,4 +1,4 @@
-// student.js — добавлена проверка существования комнаты
+// student.js — полностью рабочая версия с синхронизацией и блокировкой
 
 const socket = io();
 const urlParams = new URLSearchParams(window.location.search);
@@ -64,14 +64,21 @@ if (exitBtn) {
 }
 pencilBtn?.classList.add('active');
 
-// ---- Рисование ----
+// ---- Рисование (только если доступ открыт) ----
 canvas.on('path:created', (e) => {
+    // Проверяем, есть ли доступ
+    if (!hasAccess) {
+        // Если доступа нет, удаляем только что созданный путь
+        canvas.remove(e.path);
+        showNotification('Доступ к рисованию закрыт', 2000);
+        return;
+    }
     e.path.set({ id: 'student-' + Date.now() });
     socket.emit('drawing-data', { roomId, object: e.path.toObject(['id']) });
 });
 
 canvas.on('mouse:down', (opt) => {
-    if (currentTool === 'eraser') {
+    if (currentTool === 'eraser' && hasAccess) {
         const target = canvas.findTarget(opt.e);
         if (target) {
             canvas.remove(target);
@@ -80,7 +87,7 @@ canvas.on('mouse:down', (opt) => {
     }
 });
 
-// ---- Блокировка доступа ----
+// ---- Блокировка доступа (управление репетитором) ----
 let hasAccess = true;
 const accessIndicator = document.getElementById('access-indicator');
 
@@ -115,7 +122,6 @@ socket.on('room-not-found', (missingRoomId) => {
 });
 
 // ---- Синхронизация доски ----
-// Передаём роль 'student'
 socket.emit('join-room', roomId, 'student');
 
 socket.on('init-canvas', (data) => {
