@@ -2,108 +2,28 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Репетитор — TutorBoard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TutorBoard — Вход для репетитора</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
-    <script src="js/webrtc.js"></script>
-    <script src="js/tutor.js"></script>
 </head>
 <body>
-    <div class="board-container">
-        <!-- Левая панель инструментов -->
-        <div class="sidebar">
-            <div class="tool-btn active" id="tool-pencil" title="Карандаш">
-                <i class="fas fa-pencil-alt"></i>
-            </div>
-            <div class="tool-btn" id="tool-line" title="Линия">
-                <i class="fas fa-minus"></i>
-            </div>
-            <div class="tool-btn" id="tool-rect" title="Прямоугольник">
-                <i class="far fa-square"></i>
-            </div>
-            <div class="tool-btn" id="tool-circle" title="Круг">
-                <i class="far fa-circle"></i>
-            </div>
-            <div class="tool-btn" id="tool-text" title="Текст">
-                <i class="fas fa-font"></i>
-            </div>
-            <div class="tool-btn" id="tool-eraser" title="Ластик">
-                <i class="fas fa-eraser"></i>
-            </div>
-            <div class="tool-btn" id="tool-upload" title="Загрузить">
-                <i class="fas fa-upload"></i>
-            </div>
-            <div class="tool-btn" id="tool-clear" title="Очистить всё">
-                <i class="fas fa-trash-alt"></i>
-            </div>
-            <div class="tool-btn" id="tool-save" title="Сохранить">
-                <i class="fas fa-download"></i>
-            </div>
-            <div class="tool-btn" id="tool-video" title="Видеозвонок">
-                <i class="fas fa-video"></i>
-            </div>
+    <div class="card">
+        <h1>Вход для репетитора</h1>
+        <div class="input-group">
+            <label>Логин</label>
+            <input type="text" id="login" placeholder="Логин">
         </div>
-
-        <!-- Основная область -->
-        <div class="main-area">
-            <div class="top-bar">
-                <div class="room-info">
-                    <span class="room-id" id="room-id">ID: ...</span>
-                    <button class="copy-btn" id="copy-room-id">
-                        <i class="far fa-copy"></i> <span>Копировать ID</span>
-                    </button>
-                    <button class="copy-btn" id="copy-student-link" title="Скопировать ссылку для ученика">
-                        <i class="fas fa-user-graduate"></i> <span>Ссылка ученику</span>
-                    </button>
-                    <span id="username-display"></span>
-                </div>
-                <!-- Кнопка блокировки (иконка замка, без текста) -->
-                <button id="lock-btn" class="lock-btn" style="background: var(--success);">
-                    <i class="fas fa-unlock-alt"></i>
-                </button>
-            </div>
-
-            <div class="canvas-area">
-                <canvas id="canvas"></canvas>
-                
-                <!-- Панель свойств (цвет, размер) -->
-                <div class="properties-panel" id="properties-panel">
-                    <div class="panel-header">
-                        <span><i class="fas fa-sliders-h"></i> Свойства</span>
-                        <button class="close-panel" id="close-properties"><i class="fas fa-times"></i></button>
-                    </div>
-                    <div class="color-palette" id="color-palette"></div>
-                    <label>Размер кисти: <span id="brush-size">5</span>px</label>
-                    <div class="brush-slider">
-                        <input type="range" id="brush-slider" min="1" max="50" value="5">
-                    </div>
-                    <button id="clear-btn" style="width:100%; margin-top:15px;" class="video-btn danger">Очистить всё</button>
-                </div>
-
-                <!-- Панель видео -->
-                <div class="video-panel" id="video-panel" style="display: none;">
-                    <div class="video-header">
-                        <h4><i class="fas fa-video"></i> Видеозвонок</h4>
-                        <div class="video-controls">
-                            <button class="video-btn" id="toggle-mic" title="Микрофон"><i class="fas fa-microphone"></i></button>
-                            <button class="video-btn" id="toggle-cam" title="Камера"><i class="fas fa-video"></i></button>
-                            <button class="video-btn" id="toggle-screen" title="Экран"><i class="fas fa-desktop"></i></button>
-                            <button class="video-btn danger" id="end-call" title="Завершить"><i class="fas fa-phone-slash"></i></button>
-                        </div>
-                    </div>
-                    <div class="video-grid" id="video-grid"></div>
-                </div>
-            </div>
+        <div class="input-group">
+            <label>Пароль</label>
+            <input type="password" id="password" placeholder="Пароль">
+        </div>
+        <button class="btn btn-primary" id="login-tutor-btn">Войти</button>
+        <div id="error-message" class="error"></div>
+        <div class="back-link">
+            <a href="/">← Вход для ученика</a>
         </div>
     </div>
-
-    <!-- Уведомления -->
-    <div class="notification" id="notification">
-        <i class="fas fa-check-circle"></i>
-        <span id="notification-text"></span>
-    </div>
+    <script src="js/tutor-login.js"></script>
 </body>
 </html>
