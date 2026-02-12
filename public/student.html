@@ -13,7 +13,7 @@
 </head>
 <body>
     <div class="board-container">
-        <!-- Левая панель инструментов (только нужное) -->
+        <!-- Левая панель инструментов -->
         <div class="sidebar">
             <div class="tool-btn active" id="tool-pencil" title="Карандаш">
                 <i class="fas fa-pencil-alt"></i>
@@ -29,7 +29,9 @@
             </div>
         </div>
 
+        <!-- Основная область -->
         <div class="main-area">
+            <!-- Верхняя панель -->
             <div class="top-bar">
                 <div class="room-info">
                     <span class="room-id" id="room-id">ID: ...</span>
@@ -40,20 +42,21 @@
                 </div>
             </div>
 
-            <div class="canvas-area">
-                <!-- Панель видео для ученика -->
-                <div class="video-panel" id="video-panel" style="display: none;">
-                    <div class="video-header">
-                        <h4><i class="fas fa-video"></i> Видеозвонок</h4>
-                        <div class="video-controls">
-                            <button class="video-btn" id="toggle-mic" title="Микрофон"><i class="fas fa-microphone"></i></button>
-                            <button class="video-btn" id="toggle-cam" title="Камера"><i class="fas fa-video"></i></button>
-                            <button class="video-btn danger" id="end-call" title="Завершить"><i class="fas fa-phone-slash"></i></button>
-                        </div>
+            <!-- 🔹 ВИДЕО-ПАНЕЛЬ – отдельный блок -->
+            <div class="video-panel" id="video-panel" style="display: none;">
+                <div class="video-header">
+                    <h4><i class="fas fa-video"></i> Видеозвонок</h4>
+                    <div class="video-controls">
+                        <button class="video-btn" id="toggle-mic" title="Микрофон"><i class="fas fa-microphone"></i></button>
+                        <button class="video-btn" id="toggle-cam" title="Камера"><i class="fas fa-video"></i></button>
+                        <button class="video-btn danger" id="end-call" title="Завершить"><i class="fas fa-phone-slash"></i></button>
                     </div>
-                    <div class="video-grid" id="video-grid"></div>
                 </div>
-                <!-- Контейнер для canvas Fabric.js -->
+                <div class="video-grid" id="video-grid"></div>
+            </div>
+
+            <!-- 🔹 ДОСКА – отдельный блок -->
+            <div class="canvas-area">
                 <div class="canvas-container">
                     <canvas id="canvas"></canvas>
                 </div>
