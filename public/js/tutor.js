@@ -1,4 +1,4 @@
-// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (перетаскивание панели свойств, сброс видео при выходе)
+// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (отправка координат в процентах)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -34,6 +34,32 @@ document.addEventListener('DOMContentLoaded', () => {
     let brushSize = 5;
     let isDrawingShape = false;
     let startX, startY, shape;
+
+    // ---------- ФУНКЦИЯ КОНВЕРТАЦИИ ПИКСЕЛЕЙ В ПРОЦЕНТЫ ----------
+    function toRelativeCoords(obj) {
+        const newObj = JSON.parse(JSON.stringify(obj));
+        
+        if (newObj.left !== undefined) newObj.left = newObj.left / canvas.width;
+        if (newObj.top !== undefined) newObj.top = newObj.top / canvas.height;
+        if (newObj.x1 !== undefined) newObj.x1 = newObj.x1 / canvas.width;
+        if (newObj.x2 !== undefined) newObj.x2 = newObj.x2 / canvas.width;
+        if (newObj.y1 !== undefined) newObj.y1 = newObj.y1 / canvas.height;
+        if (newObj.y2 !== undefined) newObj.y2 = newObj.y2 / canvas.height;
+        if (newObj.width !== undefined) newObj.width = newObj.width / canvas.width;
+        if (newObj.height !== undefined) newObj.height = newObj.height / canvas.height;
+        if (newObj.radius !== undefined) newObj.radius = newObj.radius / Math.min(canvas.width, canvas.height);
+        if (newObj.scaleX !== undefined) newObj.scaleX = newObj.scaleX * canvas.width / 100;
+        if (newObj.scaleY !== undefined) newObj.scaleY = newObj.scaleY * canvas.height / 100;
+        
+        if (newObj.path) {
+            newObj.path.forEach(cmd => {
+                if (cmd[1] !== undefined) cmd[1] = cmd[1] / canvas.width;
+                if (cmd[2] !== undefined) cmd[2] = cmd[2] / canvas.height;
+            });
+        }
+        
+        return newObj;
+    }
 
     // ---------- UI ----------
     const roomIdEl = document.getElementById('room-id');
@@ -152,7 +178,9 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.on('mouse:up', () => {
         if (shape) {
             shape.set({ selectable: true, evented: true, id: 'obj-' + Date.now() });
-            socket.emit('drawing-data', { roomId, object: shape.toObject(['id']) });
+            const shapeData = shape.toObject(['id']);
+            const relativeData = toRelativeCoords(shapeData);
+            socket.emit('drawing-data', { roomId, object: relativeData });
             shape = null;
         }
         isDrawingShape = false;
@@ -160,7 +188,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     canvas.on('path:created', (e) => {
         e.path.set({ id: 'obj-' + Date.now() });
-        socket.emit('drawing-data', { roomId, object: e.path.toObject(['id']) });
+        const pathData = e.path.toObject(['id']);
+        const relativeData = toRelativeCoords(pathData);
+        socket.emit('drawing-data', { roomId, object: relativeData });
     });
 
     // ---------- ЗАГРУЗКА ИЗОБРАЖЕНИЙ ----------
@@ -174,10 +204,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     fabric.Image.fromURL(e.target.result, (img) => {
-                        img.scaleToWidth(canvas.width * 0.5);
-                        img.set({ id: 'img-' + Date.now() });
+                        const scale = (canvas.width * 0.5) / img.width;
+                        img.scale(scale);
+                        img.set({ 
+                            id: 'img-' + Date.now(),
+                            left: (canvas.width - img.width * scale) / 2,
+                            top: (canvas.height - img.height * scale) / 2
+                        });
+                        
+                        const imgData = img.toObject(['id']);
+                        const relativeData = toRelativeCoords(imgData);
+                        
                         canvas.add(img);
-                        socket.emit('drawing-data', { roomId, object: img.toObject(['id']) });
+                        socket.emit('drawing-data', { roomId, object: relativeData });
                     });
                 };
                 reader.readAsDataURL(file);
@@ -209,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         link.click();
     });
 
-    // ---------- КОПИРОВАНИЕ ID ----------
+    // ---------- КОПИРОВАНИЕ ----------
     function copyToClipboard(text, msg) {
         if (navigator.clipboard) {
             navigator.clipboard.writeText(text).then(() => showNotification(msg));
@@ -231,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ---------- БЛОКИРОВКА (ИКОНКА ЗАМКА) ----------
+    // ---------- БЛОКИРОВКА ----------
     let isLocked = false;
     const lockBtn = document.getElementById('lock-btn');
     if (lockBtn) {

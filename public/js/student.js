@@ -1,4 +1,4 @@
-// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (перетаскивание свойств, сброс при выходе)
+// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (получение и конвертация процентов в пиксели)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -12,18 +12,58 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // ---- Canvas ----
-    const canvas = new fabric.Canvas('canvas', { backgroundColor: 'white', selection: false });
+    // ---------- CANVAS ----------
+    const canvas = new fabric.Canvas('canvas', { 
+        backgroundColor: 'white', 
+        selection: false 
+    });
+
+    // ---------- ФУНКЦИЯ КОНВЕРТАЦИИ ПРОЦЕНТОВ В ПИКСЕЛИ ----------
+    function toAbsoluteCoords(obj) {
+        if (!obj) return obj;
+        const newObj = JSON.parse(JSON.stringify(obj));
+        
+        if (newObj.left !== undefined) newObj.left = newObj.left * canvas.width;
+        if (newObj.top !== undefined) newObj.top = newObj.top * canvas.height;
+        if (newObj.x1 !== undefined) newObj.x1 = newObj.x1 * canvas.width;
+        if (newObj.x2 !== undefined) newObj.x2 = newObj.x2 * canvas.width;
+        if (newObj.y1 !== undefined) newObj.y1 = newObj.y1 * canvas.height;
+        if (newObj.y2 !== undefined) newObj.y2 = newObj.y2 * canvas.height;
+        if (newObj.width !== undefined) newObj.width = newObj.width * canvas.width;
+        if (newObj.height !== undefined) newObj.height = newObj.height * canvas.height;
+        if (newObj.radius !== undefined) newObj.radius = newObj.radius * Math.min(canvas.width, canvas.height);
+        if (newObj.scaleX !== undefined) newObj.scaleX = newObj.scaleX * canvas.width / 100;
+        if (newObj.scaleY !== undefined) newObj.scaleY = newObj.scaleY * canvas.height / 100;
+        
+        if (newObj.path) {
+            newObj.path.forEach(cmd => {
+                if (cmd[1] !== undefined) cmd[1] = cmd[1] * canvas.width;
+                if (cmd[2] !== undefined) cmd[2] = cmd[2] * canvas.height;
+            });
+        }
+        
+        return newObj;
+    }
 
     function resizeCanvas() {
-        const container = document.querySelector('.canvas-area');
+        const container = document.querySelector('.canvas-container');
         if (!container) return;
+        
+        // Сохраняем текущее состояние
+        const json = canvas.toJSON();
+        
         canvas.setWidth(container.clientWidth);
         canvas.setHeight(container.clientHeight);
-        canvas.renderAll();
+        
+        // Восстанавливаем объекты
+        canvas.loadFromJSON(json, () => {
+            canvas.renderAll();
+        });
     }
+
     window.addEventListener('resize', resizeCanvas);
     setTimeout(resizeCanvas, 100);
+    setTimeout(resizeCanvas, 300);
 
     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
     canvas.freeDrawingBrush.width = 5;
@@ -33,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTool = 'pencil';
     let hasAccess = true;
 
-    // ---- UI ----
+    // ---------- UI ----------
     const roomIdEl = document.getElementById('room-id');
     if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
 
@@ -42,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const accessIndicator = document.getElementById('access-indicator');
 
-    // ---- Инструменты ----
+    // ---------- ИНСТРУМЕНТЫ ----------
     const pencilBtn = document.getElementById('tool-pencil');
     const eraserBtn = document.getElementById('tool-eraser');
     const exitBtn = document.getElementById('exit-btn');
@@ -66,17 +106,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (exitBtn) {
-        exitBtn.addEventListener('click', () => {
-            // Завершаем видеозвонок перед выходом
-            if (typeof stopVideoCall === 'function' && window.isVideoActive) {
-                stopVideoCall();
-            }
-            window.location.href = '/';
-        });
+        exitBtn.addEventListener('click', () => window.location.href = '/');
     }
     pencilBtn?.classList.add('active');
 
-    // ---- Рисование ----
+    // ---------- РИСОВАНИЕ (УЧЕНИК) ----------
     canvas.on('path:created', (e) => {
         if (!hasAccess) {
             canvas.remove(e.path);
@@ -84,7 +118,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         e.path.set({ id: 'student-' + Date.now() });
-        socket.emit('drawing-data', { roomId, object: e.path.toObject(['id']) });
+        
+        const pathData = e.path.toObject(['id']);
+        if (pathData.path) {
+            pathData.path.forEach(cmd => {
+                if (cmd[1] !== undefined) cmd[1] = cmd[1] / canvas.width;
+                if (cmd[2] !== undefined) cmd[2] = cmd[2] / canvas.height;
+            });
+        }
+        
+        socket.emit('drawing-data', { roomId, object: pathData });
     });
 
     canvas.on('mouse:down', (opt) => {
@@ -97,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ---- Блокировка доступа ----
+    // ---------- БЛОКИРОВКА ДОСТУПА ----------
     socket.on('admin-lock-status', (locked) => {
         hasAccess = !locked;
         canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
@@ -121,13 +164,13 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification(hasAccess ? 'Доступ открыт' : 'Доступ закрыт');
     });
 
-    // ---- Несуществующая комната ----
+    // ---------- НЕСУЩЕСТВУЮЩАЯ КОМНАТА ----------
     socket.on('room-not-found', () => {
         alert('Комната не найдена. Уточните ID у репетитора.');
         window.location.href = '/';
     });
 
-    // ---- Синхронизация доски ----
+    // ---------- СИНХРОНИЗАЦИЯ ДОСКИ ----------
     socket.emit('join-room', roomId, 'student');
 
     socket.on('init-canvas', (data) => {
@@ -137,8 +180,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // ---------- ПОЛУЧЕНИЕ РИСУНКОВ (КОНВЕРТАЦИЯ ПРОЦЕНТОВ) ----------
     socket.on('draw-to-client', (obj) => {
-        fabric.util.enlivenObjects([obj], (objects) => {
+        const absoluteObj = toAbsoluteCoords(obj);
+        
+        fabric.util.enlivenObjects([absoluteObj], (objects) => {
             const objToAdd = objects[0];
             const existing = canvas.getObjects().find(o => o.id === obj.id);
             if (existing) canvas.remove(existing);
@@ -161,14 +207,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'student');
         
-        // Автостарт с защитой от дублирования
         setTimeout(() => {
             if (typeof window.isVideoActive !== 'undefined' && window.isVideoActive === true) {
-                console.log('🔄 Обнаружен активный видеозвонок, завершаем...');
                 if (typeof stopVideoCall === 'function') stopVideoCall();
             }
             setTimeout(() => {
-                console.log('🎥 Автостарт видео для ученика');
                 if (typeof startVideoCall === 'function') {
                     startVideoCall().catch(err => console.warn('Не удалось автостартовать видео:', err));
                 }
@@ -176,17 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 
-    // ---------- ПЕРЕТАСКИВАНИЕ ПАНЕЛИ СВОЙСТВ ----------
-    const propsPanel = document.getElementById('properties-panel');
-    if (propsPanel && typeof makeDraggable === 'function') {
-        const handle = propsPanel.querySelector('.panel-header');
-        if (handle && !propsPanel.dataset.draggable) {
-            makeDraggable(propsPanel, handle);
-            propsPanel.dataset.draggable = 'true';
-        }
-    }
-
-    // ---- Уведомления ----
+    // ---------- УВЕДОМЛЕНИЯ ----------
     function showNotification(msg, duration = 3000) {
         const notif = document.getElementById('notification');
         if (notif) {

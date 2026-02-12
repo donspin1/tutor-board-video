@@ -346,7 +346,7 @@ body {
 }
 
 /* ==================================================================
-   МОБИЛЬНАЯ АДАПТАЦИЯ — ИДЕАЛЬНЫЙ ПОРЯДОК, ДОСКА 16:9, КНОПКИ ВИДНЫ
+   МОБИЛЬНАЯ АДАПТАЦИЯ — ИДЕАЛЬНЫЙ ПОРЯДОК, ДОСКА 16:9
    ================================================================== */
 @media (max-width: 900px) {
     .board-container {
@@ -356,7 +356,6 @@ body {
         width: 100vw !important;
     }
 
-    /* Панель инструментов — строго внизу */
     .sidebar {
         order: 2 !important;
         width: 100% !important;
@@ -371,20 +370,18 @@ body {
         overflow-x: auto !important;
         overflow-y: hidden !important;
         flex-shrink: 0 !important;
-        margin: 0 !important; /* убираем возможные отступы */
+        margin: 0 !important;
     }
 
-    /* Основная область — занимает всё место между верхней панелью и кнопками */
     .main-area {
         order: 1 !important;
         display: flex !important;
         flex-direction: column !important;
         flex: 1 1 0 !important;
         min-height: 0 !important;
-        padding: 10px 10px 0 10px !important; /* убран нижний padding */
+        padding: 10px 10px 0 10px !important;
     }
 
-    /* Верхняя панель — фиксированная высота */
     .top-bar {
         flex-shrink: 0 !important;
         margin-bottom: 10px !important;
@@ -393,7 +390,6 @@ body {
         border-radius: 16px !important;
     }
 
-    /* Canvas-область — не растягивается, подстраивается под контент */
     .canvas-area {
         display: flex !important;
         flex-direction: column !important;
@@ -406,7 +402,6 @@ body {
         margin-bottom: 10px !important;
     }
 
-    /* Панель видео — первая */
     .video-panel {
         order: 1 !important;
         position: relative !important;
@@ -443,7 +438,6 @@ body {
         color: white !important;
     }
 
-    /* Контейнер доски — строго 16:9 */
     .canvas-container {
         order: 2 !important;
         aspect-ratio: 16 / 9 !important;
@@ -454,7 +448,6 @@ body {
         background: white !important;
     }
 
-    /* Canvas внутри занимают 100% контейнера */
     #canvas,
     .upper-canvas,
     .lower-canvas {
@@ -462,7 +455,6 @@ body {
         height: 100% !important;
     }
 
-    /* Панель свойств для репетитора — фиксированная снизу */
     .properties-panel {
         position: fixed !important;
         left: 10px !important;
@@ -480,7 +472,6 @@ body {
         z-index: 200 !important;
     }
 
-    /* Компактные элементы интерфейса */
     .copy-btn span {
         display: none !important;
     }
