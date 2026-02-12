@@ -1,4 +1,4 @@
-// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (получение и конвертация процентов в пиксели)
+// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (ИСПРАВЛЕННАЯ КОНВЕРТАЦИЯ)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selection: false 
     });
 
-    // ---------- ФУНКЦИЯ КОНВЕРТАЦИИ ПРОЦЕНТОВ В ПИКСЕЛИ ----------
+    // ---------- КОНВЕРТАЦИЯ ПРОЦЕНТОВ В ПИКСЕЛИ ----------
     function toAbsoluteCoords(obj) {
         if (!obj) return obj;
         const newObj = JSON.parse(JSON.stringify(obj));
@@ -32,13 +32,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (newObj.width !== undefined) newObj.width = newObj.width * canvas.width;
         if (newObj.height !== undefined) newObj.height = newObj.height * canvas.height;
         if (newObj.radius !== undefined) newObj.radius = newObj.radius * Math.min(canvas.width, canvas.height);
-        if (newObj.scaleX !== undefined) newObj.scaleX = newObj.scaleX * canvas.width / 100;
-        if (newObj.scaleY !== undefined) newObj.scaleY = newObj.scaleY * canvas.height / 100;
         
         if (newObj.path) {
             newObj.path.forEach(cmd => {
-                if (cmd[1] !== undefined) cmd[1] = cmd[1] * canvas.width;
-                if (cmd[2] !== undefined) cmd[2] = cmd[2] * canvas.height;
+                for (let i = 1; i < cmd.length; i += 2) {
+                    cmd[i] = cmd[i] * canvas.width;
+                    if (i + 1 < cmd.length) {
+                        cmd[i + 1] = cmd[i + 1] * canvas.height;
+                    }
+                }
             });
         }
         
@@ -49,16 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.querySelector('.canvas-container');
         if (!container) return;
         
-        // Сохраняем текущее состояние
         const json = canvas.toJSON();
-        
         canvas.setWidth(container.clientWidth);
         canvas.setHeight(container.clientHeight);
-        
-        // Восстанавливаем объекты
-        canvas.loadFromJSON(json, () => {
-            canvas.renderAll();
-        });
+        canvas.loadFromJSON(json, () => canvas.renderAll());
     }
 
     window.addEventListener('resize', resizeCanvas);
@@ -122,8 +118,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const pathData = e.path.toObject(['id']);
         if (pathData.path) {
             pathData.path.forEach(cmd => {
-                if (cmd[1] !== undefined) cmd[1] = cmd[1] / canvas.width;
-                if (cmd[2] !== undefined) cmd[2] = cmd[2] / canvas.height;
+                for (let i = 1; i < cmd.length; i += 2) {
+                    cmd[i] = cmd[i] / canvas.width;
+                    if (i + 1 < cmd.length) {
+                        cmd[i + 1] = cmd[i + 1] / canvas.height;
+                    }
+                }
             });
         }
         
@@ -180,10 +180,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ---------- ПОЛУЧЕНИЕ РИСУНКОВ (КОНВЕРТАЦИЯ ПРОЦЕНТОВ) ----------
+    // ---------- ПОЛУЧЕНИЕ РИСУНКОВ ----------
     socket.on('draw-to-client', (obj) => {
         const absoluteObj = toAbsoluteCoords(obj);
-        
         fabric.util.enlivenObjects([absoluteObj], (objects) => {
             const objToAdd = objects[0];
             const existing = canvas.getObjects().find(o => o.id === obj.id);
@@ -206,7 +205,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---------- ВИДЕО ----------
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'student');
-        
         setTimeout(() => {
             if (typeof window.isVideoActive !== 'undefined' && window.isVideoActive === true) {
                 if (typeof stopVideoCall === 'function') stopVideoCall();

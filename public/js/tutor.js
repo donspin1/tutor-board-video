@@ -1,4 +1,4 @@
-// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (отправка координат в процентах)
+// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (ИСПРАВЛЕННАЯ КОНВЕРТАЦИЯ)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDrawingShape = false;
     let startX, startY, shape;
 
-    // ---------- ФУНКЦИЯ КОНВЕРТАЦИИ ПИКСЕЛЕЙ В ПРОЦЕНТЫ ----------
+    // ---------- КОНВЕРТАЦИЯ ПИКСЕЛЕЙ В ПРОЦЕНТЫ ----------
     function toRelativeCoords(obj) {
         const newObj = JSON.parse(JSON.stringify(obj));
         
@@ -48,13 +48,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (newObj.width !== undefined) newObj.width = newObj.width / canvas.width;
         if (newObj.height !== undefined) newObj.height = newObj.height / canvas.height;
         if (newObj.radius !== undefined) newObj.radius = newObj.radius / Math.min(canvas.width, canvas.height);
-        if (newObj.scaleX !== undefined) newObj.scaleX = newObj.scaleX * canvas.width / 100;
-        if (newObj.scaleY !== undefined) newObj.scaleY = newObj.scaleY * canvas.height / 100;
         
+        // Масштаб НЕ трогаем
         if (newObj.path) {
             newObj.path.forEach(cmd => {
-                if (cmd[1] !== undefined) cmd[1] = cmd[1] / canvas.width;
-                if (cmd[2] !== undefined) cmd[2] = cmd[2] / canvas.height;
+                for (let i = 1; i < cmd.length; i += 2) {
+                    cmd[i] = cmd[i] / canvas.width;
+                    if (i + 1 < cmd.length) {
+                        cmd[i + 1] = cmd[i + 1] / canvas.height;
+                    }
+                }
             });
         }
         
