@@ -1,69 +1,34 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ученик — TutorBoard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <title>Room</title>
+    <link rel="stylesheet" href="/css/style.css">
     <script src="/socket.io/socket.io.js"></script>
-    <link rel="stylesheet" href="css/style.css">
-    <!-- ВАЖНО: подключаем внешние скрипты, а НЕ вставляем код внутрь -->
-    <script src="js/webrtc.js"></script>
-    <script src="js/student.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
+    <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
 </head>
 <body>
-    <div class="board-container">
-        <!-- Левая панель инструментов (только нужное) -->
-        <div class="sidebar">
-            <div class="tool-btn active" id="tool-pencil" title="Карандаш">
-                <i class="fas fa-pencil-alt"></i>
-            </div>
-            <div class="tool-btn" id="tool-eraser" title="Ластик">
-                <i class="fas fa-eraser"></i>
-            </div>
-            <div class="tool-btn" id="exit-btn" title="Выйти">
-                <i class="fas fa-sign-out-alt"></i>
-            </div>
-            <div class="tool-btn" id="tool-video" title="Видеозвонок">
-                <i class="fas fa-video"></i>
-            </div>
-        </div>
 
-        <div class="main-area">
-            <div class="top-bar">
-                <div class="room-info">
-                    <span class="room-id" id="room-id">ID: ...</span>
-                    <span id="username-display"></span>
-                </div>
-                <div id="access-indicator" style="background: var(--success); padding: 8px 16px; border-radius: 12px; color: white; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-check-circle"></i> Доступ разрешён
-                </div>
-            </div>
+<div class="app">
 
-            <div class="canvas-area">
-                <canvas id="canvas"></canvas>
-                
-                <!-- Панель видео для ученика -->
-                <div class="video-panel" id="video-panel" style="display: none;">
-                    <div class="video-header">
-                        <h4><i class="fas fa-video"></i> Видеозвонок</h4>
-                        <div class="video-controls">
-                            <button class="video-btn" id="toggle-mic" title="Микрофон"><i class="fas fa-microphone"></i></button>
-                            <button class="video-btn" id="toggle-cam" title="Камера"><i class="fas fa-video"></i></button>
-                            <button class="video-btn danger" id="end-call" title="Завершить"><i class="fas fa-phone-slash"></i></button>
-                        </div>
-                    </div>
-                    <div class="video-grid" id="video-grid"></div>
-                </div>
-            </div>
-        </div>
+    <div class="topbar">
+        <h3>Room</h3>
+        <video id="localVideo" autoplay muted></video>
     </div>
 
-    <!-- Уведомления -->
-    <div class="notification" id="notification">
-        <i class="fas fa-check-circle"></i>
-        <span id="notification-text"></span>
+    <div class="video-section" id="videos"></div>
+
+    <div class="board-section">
+        <canvas id="canvas"></canvas>
     </div>
+
+    <div class="mobile-controls">
+        <button onclick="location.reload()">🔄</button>
+    </div>
+
+</div>
+
+<script type="module" src="/js/app.js"></script>
+
 </body>
 </html>
