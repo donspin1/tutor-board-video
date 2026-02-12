@@ -1,4 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (независимое видео, репетитор видит ученика без своей камеры)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (полностью независимое видео)
 
 let localStream = null;
 let peerConnections = {};
@@ -15,34 +15,69 @@ function initWebRTC(socket, roomId, role) {
 
     console.log(`📹 WebRTC инициализирован для ${role}`);
 
-    // Сразу присоединяемся к видеокомнате (режим слушателя)
+    // НЕМЕДЛЕННО присоединяемся к видеокомнате (даже без камеры)
     socket.emit('join-video-room', { roomId, peerId: socket.id, role });
 
     // --- Обработчики событий ---
     socket.on('user-joined', async ({ peerId, role: remoteRole }) => {
         console.log(`👤 user joined: ${peerId} (${remoteRole})`);
 
-        // Если у нас уже есть поток, отправляем offer новому пользователю
+        // Всегда создаём peer-соединение
+        let pc = peerConnections[peerId];
+        if (!pc) {
+            pc = createPeerConnection(peerId);
+        }
+
+        // Если у нас уже есть локальный поток — добавляем треки
         if (localStream) {
-            await createOffer(peerId);
+            const senders = pc.getSenders().map(s => s.track?.kind);
+            localStream.getTracks().forEach(track => {
+                if (!senders.includes(track.kind)) {
+                    pc.addTrack(track, localStream);
+                    console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
+                }
+            });
+        }
+
+        // Кто создаёт offer?
+        // Правило: репетитор всегда инициатор, если он в комнате.
+        // Если репетитора нет, то инициатором может быть ученик.
+        // Упростим: тот, у кого роль 'tutor' создаёт offer,
+        // а ученик создаёт offer только если к нему присоединился репетитор.
+        if (window.role === 'tutor' || (window.role === 'student' && remoteRole === 'tutor')) {
+            // Предотвращаем гонку: создаём offer только если состояние stable
+            if (pc.signalingState === 'stable') {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                socket.emit('send-offer', { toPeerId: peerId, offer });
+                console.log(`📤 Offer отправлен ${peerId}`);
+            }
         }
     });
 
     socket.on('receive-offer', async ({ from, offer }) => {
         console.log(`📩 Получен offer от ${from}`);
 
-        const pc = createPeerConnection(from);
-
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-        // Если у нас есть локальный поток, добавляем его в ответ
-        if (localStream) {
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        let pc = peerConnections[from];
+        if (!pc) {
+            pc = createPeerConnection(from);
         }
 
+        // Добавляем локальные треки, если есть
+        if (localStream) {
+            const senders = pc.getSenders().map(s => s.track?.kind);
+            localStream.getTracks().forEach(track => {
+                if (!senders.includes(track.kind)) {
+                    pc.addTrack(track, localStream);
+                }
+            });
+        }
+
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('send-answer', { toPeerId: from, answer });
+        console.log(`📤 Answer отправлен ${from}`);
     });
 
     socket.on('receive-answer', async ({ from, answer }) => {
@@ -122,9 +157,15 @@ async function startVideoCall() {
 
         addVideoElement(window.socket.id, localStream, true);
         
-        // Отправляем offer всем уже подключенным пирам
-        Object.keys(peerConnections).forEach(async peerId => {
-            await createOffer(peerId);
+        // Добавляем треки во ВСЕ существующие peer-соединения
+        Object.values(peerConnections).forEach(pc => {
+            const senders = pc.getSenders().map(s => s.track?.kind);
+            localStream.getTracks().forEach(track => {
+                if (!senders.includes(track.kind)) {
+                    pc.addTrack(track, localStream);
+                    console.log(`➕ Добавлен трек ${track.kind} в соединение`);
+                }
+            });
         });
 
         updateMicButton(true);
@@ -215,6 +256,7 @@ function createPeerConnection(peerId) {
         if (!document.getElementById(`video-${peerId}`)) {
             addVideoElement(peerId, e.streams[0], false);
         }
+        // Показываем панель видео, если она скрыта
         document.getElementById('video-panel').style.display = 'flex';
     };
 

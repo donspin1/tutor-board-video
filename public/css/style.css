@@ -1,4 +1,4 @@
-/* ===== TutorBoard — ФИНАЛЬНЫЕ СТИЛИ (видео-панель компактная на всех устройствах) ===== */
+/* ===== TutorBoard — ФИНАЛЬНЫЕ СТИЛИ (без заголовка, видео-панель компактная) ===== */
 
 :root {
     --primary: #6366f1;
@@ -150,12 +150,12 @@ body {
     transform: scale(1.05);
 }
 
-/* ===== ВИДЕО-ПАНЕЛЬ (ДЕСКТОП) — УМЕНЬШЕНО В 2 РАЗА ===== */
+/* ===== ВИДЕО-ПАНЕЛЬ (ДЕСКТОП) — БЕЗ ЗАГОЛОВКА, КОМПАКТНАЯ ===== */
 .video-panel {
     position: absolute;
     top: 20px;
     right: 20px;
-    width: 160px;
+    width: 140px;               /* ещё меньше */
     background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(10px);
     border-radius: 12px;
@@ -163,7 +163,7 @@ body {
     color: white;
     display: none;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     z-index: 100;
     border: 1px solid rgba(255, 255, 255, 0.2);
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
@@ -171,16 +171,11 @@ body {
 
 .video-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;  /* кнопки прижаты вправо */
     align-items: center;
     cursor: move;
     user-select: none;
-    margin-bottom: 4px;
-}
-
-.video-header h4 {
-    font-size: 13px;
-    margin: 0;
+    margin-bottom: 2px;
 }
 
 .video-controls {
@@ -357,7 +352,7 @@ video {
     transform: translateX(0);
 }
 
-/* ===== МОБИЛЬНАЯ АДАПТАЦИЯ — ВИДЕО ТОЖЕ КОМПАКТНОЕ ===== */
+/* ===== МОБИЛЬНАЯ АДАПТАЦИЯ — КОМПАКТНАЯ ПАНЕЛЬ ===== */
 @media (max-width: 900px) {
     .board-container {
         flex-direction: column;
@@ -397,7 +392,6 @@ video {
         flex-shrink: 0;
     }
 
-    /* Видео-панель на мобильных — компактная */
     .video-panel {
         order: 2;
         position: relative;
@@ -408,15 +402,15 @@ video {
         color: var(--dark);
         border: 1px solid #e2e8f0;
         border-radius: 12px;
-        padding: 8px;
+        padding: 6px;
         margin-bottom: 8px;
-        gap: 6px;
+        gap: 4px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     }
 
-    .video-header h4 {
-        color: var(--dark);
-        font-size: 13px;
+    .video-header {
+        justify-content: flex-end;
+        margin-bottom: 2px;
     }
 
     .video-controls {
@@ -443,11 +437,7 @@ video {
 
     .video-grid {
         grid-template-columns: repeat(2, 1fr);
-        gap: 6px;
-    }
-
-    video {
-        border-radius: 6px;
+        gap: 4px;
     }
 
     .canvas-area {
@@ -462,7 +452,6 @@ video {
         height: 100% !important;
     }
 
-    /* Компактные элементы интерфейса */
     .copy-btn span {
         display: none;
     }
@@ -515,7 +504,7 @@ video {
         font-size: 12px;
     }
     .video-panel {
-        padding: 6px;
+        padding: 5px;
         margin-bottom: 6px;
     }
     .video-grid {
