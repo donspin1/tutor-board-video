@@ -1,4 +1,4 @@
-/* ===== TutorBoard — ФИНАЛЬНЫЕ СТИЛИ (отступ 10px между видео и доской) ===== */
+/* ===== TutorBoard — ФИНАЛЬНЫЕ СТИЛИ (отступ 10px над доской) ===== */
 
 :root {
     --primary: #6366f1;
@@ -346,7 +346,7 @@ body {
 }
 
 /* ==================================================================
-   МОБИЛЬНАЯ АДАПТАЦИЯ — ОТСТУП МЕЖДУ ВИДЕО И ДОСКОЙ 10px
+   МОБИЛЬНАЯ АДАПТАЦИЯ — ЕДИНЫЕ ОТСТУПЫ 10px
    ================================================================== */
 @media (max-width: 900px) {
     .board-container {
@@ -384,7 +384,7 @@ body {
 
     .top-bar {
         flex-shrink: 0 !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 10px !important; /* отступ от верхней панели до видео */
         padding: 8px 12px !important;
         background: white !important;
         border-radius: 16px !important;
@@ -416,6 +416,7 @@ body {
         display: none;
         flex-shrink: 0 !important;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
+        margin-bottom: 0 !important; /* отступ снизу НЕ ставим */
     }
 
     .canvas-container {
@@ -426,7 +427,7 @@ body {
         flex: none !important;
         position: relative !important;
         background: white !important;
-        margin-top: 10px !important; /* 👈 отступ между видео и доской */
+        margin-top: 10px !important; /* ГАРАНТИРОВАННЫЙ ОТСТУП 10px НАД ДОСКОЙ */
     }
 
     #canvas,

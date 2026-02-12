@@ -1,4 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (оба участника видят видео при включении)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (независимое видео, гарантированная передача треков)
 
 let localStream = null;
 let peerConnections = {};
@@ -48,7 +48,7 @@ function initWebRTC(socket, roomId, role) {
         toggleScreen.addEventListener('click', startScreenShare);
     }
 
-    // 👇 ОБА УЧАСТНИКА СРАЗУ ПРИСОЕДИНЯЮТСЯ К ВИДЕОКОМНАТЕ
+    // 👇 ОБА УЧАСТНИКА НЕМЕДЛЕННО ПРИСОЕДИНЯЮТСЯ К ВИДЕОКОМНАТЕ
     socket.emit('join-video-room', {
         roomId: roomId,
         peerId: socket.id,
@@ -92,10 +92,14 @@ async function startVideoCall() {
 
         addLocalVideo();
         
-        // 👇 Добавляем треки во все существующие peer-соединения
+        // 👇 ДОБАВЛЯЕМ ТРЕКИ ВО ВСЕ СУЩЕСТВУЮЩИЕ PEER-СОЕДИНЕНИЯ
         Object.values(peerConnections).forEach(pc => {
+            const senders = pc.getSenders().map(s => s.track?.kind);
             localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
+                if (!senders.includes(track.kind)) {
+                    pc.addTrack(track, localStream);
+                    console.log(`➕ Добавлен трек ${track.kind} в соединение`);
+                }
             });
         });
 
@@ -320,72 +324,89 @@ function setupSocketListeners() {
     socket.on('user-joined', async ({ peerId, role }) => {
         console.log(`👤 user joined: ${peerId} (${role})`);
 
-        const pc = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        });
-        peerConnections[peerId] = pc;
+        // Создаём peer-соединение, если его ещё нет
+        let pc = peerConnections[peerId];
+        if (!pc) {
+            pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            });
+            peerConnections[peerId] = pc;
 
+            pc.onicecandidate = (e) => {
+                if (e.candidate) {
+                    socket.emit('send-ice-candidate', { toPeerId: peerId, candidate: e.candidate });
+                }
+            };
+
+            pc.ontrack = (e) => {
+                console.log(`📥 Получен трек ${e.track.kind} от ${peerId}`);
+                if (!document.getElementById(`video-${peerId}`)) {
+                    addVideoElement(peerId, e.streams[0], false);
+                }
+            };
+        }
+
+        // Добавляем локальные треки, если они уже есть
         if (localStream) {
+            const senders = pc.getSenders().map(s => s.track?.kind);
             localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
-                console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
+                if (!senders.includes(track.kind)) {
+                    pc.addTrack(track, localStream);
+                    console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
+                }
             });
         }
 
-        pc.onicecandidate = (e) => {
-            if (e.candidate) {
-                socket.emit('send-ice-candidate', { toPeerId: peerId, candidate: e.candidate });
-            }
-        };
-
-        pc.ontrack = (e) => {
-            console.log(`📥 Получен трек ${e.track.kind} от ${peerId}`);
-            if (!document.getElementById(`video-${peerId}`)) {
-                addVideoElement(peerId, e.streams[0], false);
-            }
-        };
-
-        // 👇 Всегда создаём offer, если мы — репетитор, или если мы — ученик и к нам присоединился репетитор
+        // Инициатором offer'а всегда выступает репетитор,
+        // или ученик, если к нему присоединился репетитор
         if (window.role === 'tutor' || (window.role === 'student' && role === 'tutor')) {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit('send-offer', { toPeerId: peerId, offer });
-            console.log(`📤 Offer отправлен ${peerId}`);
+            if (pc.signalingState === 'stable') {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                socket.emit('send-offer', { toPeerId: peerId, offer });
+                console.log(`📤 Offer отправлен ${peerId}`);
+            }
         }
     });
 
     socket.on('receive-offer', async ({ from, offer }) => {
         console.log(`📩 Получен offer от ${from}`);
 
-        const pc = peerConnections[from] || new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        });
-        peerConnections[from] = pc;
-
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
+        let pc = peerConnections[from];
+        if (!pc) {
+            pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
             });
+            peerConnections[from] = pc;
+
+            pc.onicecandidate = (e) => {
+                if (e.candidate) {
+                    socket.emit('send-ice-candidate', { toPeerId: from, candidate: e.candidate });
+                }
+            };
+
+            pc.ontrack = (e) => {
+                console.log(`📥 Получен трек ${e.track.kind} от ${from}`);
+                if (!document.getElementById(`video-${from}`)) {
+                    addVideoElement(from, e.streams[0], false);
+                }
+            };
         }
 
-        pc.onicecandidate = (e) => {
-            if (e.candidate) {
-                socket.emit('send-ice-candidate', { toPeerId: from, candidate: e.candidate });
-            }
-        };
-
-        pc.ontrack = (e) => {
-            console.log(`📥 Получен трек ${e.track.kind} от ${from}`);
-            if (!document.getElementById(`video-${from}`)) {
-                addVideoElement(from, e.streams[0], false);
-            }
-        };
+        if (localStream) {
+            const senders = pc.getSenders().map(s => s.track?.kind);
+            localStream.getTracks().forEach(track => {
+                if (!senders.includes(track.kind)) {
+                    pc.addTrack(track, localStream);
+                }
+            });
+        }
 
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
