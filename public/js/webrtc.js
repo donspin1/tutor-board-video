@@ -1,45 +1,30 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (ученик ждёт поток и отправляет offer)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (ученик получает список участников и гарантированно отправляет offer)
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
 let webrtcInitialized = false;
+let pendingPeerIds = []; // для ученика: peerId, для которых нужно отправить offer после получения потока
 
-// ---------- ПЕРЕГОВОРЫ ----------
-async function negotiate(peerId, pc) {
-    if (!pc) {
-        console.log(`❌ negotiate: pc для ${peerId} не найден`);
-        return;
-    }
-    if (!localStream) {
-        console.log(`⏸️ negotiate: нет локального потока, пропускаем`);
-        return;
-    }
-    if (pc.signalingState !== 'stable') {
-        console.log(`⏳ negotiate: состояние ${pc.signalingState}, ждём stable`);
-        return;
-    }
-    if (pc._isNegotiating) {
-        console.log(`⏳ negotiate: уже идёт переговорный процесс для ${peerId}, пропускаем`);
-        return;
-    }
+// ---------- ПЕРЕГОВОРЫ (ОТПРАВКА OFFER) ----------
+async function sendOffer(peerId, pc) {
+    if (!pc || pc.signalingState !== 'stable' || pc._isNegotiating) return;
     try {
         pc._isNegotiating = true;
-        console.log(`🔄 Создаётся offer для ${peerId} (роль: ${window.role})`);
+        console.log(`🔄 Отправка offer для ${peerId} (роль: ${window.role})`);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         window.socket.emit('send-offer', { toPeerId: peerId, offer });
     } catch (e) {
-        console.error(`❌ Ошибка negotiate:`, e);
+        console.error(`❌ Ошибка sendOffer:`, e);
     } finally {
-        pc._isNegotiating = false;
+        pc._isNegating = false;
     }
 }
 
-// ---------- ОСНОВНЫЕ ФУНКЦИИ ВИДЕО ----------
+// ---------- ЗАПУСК ВИДЕО ----------
 async function startVideoCall(isSilent = false) {
     try {
-        console.log(`🎥 startVideoCall: запрос камеры`);
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         isVideoActive = true;
         console.log(`✅ Камера получена, треков: ${localStream.getTracks().length}`);
@@ -55,29 +40,25 @@ async function startVideoCall(isSilent = false) {
 
         addVideoElement(window.socket.id, localStream, true);
 
-        // Добавляем треки во все существующие peer-соединения
+        // 🔥 Добавляем треки во все существующие peer-соединения
         for (const [peerId, pc] of Object.entries(peerConnections)) {
             localStream.getTracks().forEach(track => {
                 const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
-                if (sender) {
-                    sender.replaceTrack(track);
-                    console.log(`🔄 replaceTrack для ${track.kind} (${peerId})`);
-                } else {
-                    pc.addTrack(track, localStream);
-                    console.log(`➕ addTrack для ${track.kind} (${peerId})`);
-                }
+                if (sender) sender.replaceTrack(track);
+                else pc.addTrack(track, localStream);
             });
         }
 
-        // 🔥 После получения потока — отправляем offer для всех ожидающих пиров
+        // 🔥 ЕСЛИ МЫ УЧЕНИК — отправляем offer для всех отложенных пидов и всех текущих
         if (window.role === 'student') {
-            Object.keys(peerConnections).forEach(peerId => {
+            const allPeerIds = [...new Set([...Object.keys(peerConnections), ...pendingPeerIds])];
+            pendingPeerIds = [];
+            for (const peerId of allPeerIds) {
                 const pc = peerConnections[peerId];
                 if (pc && pc.signalingState === 'stable' && !pc._isNegotiating) {
-                    console.log(`🎓 Ученик отправляет offer для ${peerId} (после старта видео)`);
-                    negotiate(peerId, pc);
+                    await sendOffer(peerId, pc);
                 }
-            });
+            }
         }
 
         updateMicButton(true);
@@ -100,7 +81,6 @@ function stopVideoCall() {
     document.getElementById('tool-video')?.classList.remove('active');
     updateMicButton(false);
     updateCamButton(false);
-    console.log('🛑 Видеозвонок остановлен');
 }
 
 function toggleVideoCall() {
@@ -108,7 +88,7 @@ function toggleVideoCall() {
     else startVideoCall(false);
 }
 
-// ---------- УПРАВЛЕНИЕ МИКРОФОНОМ ----------
+// ---------- УПРАВЛЕНИЕ МИКРОФОНОМ/КАМЕРОЙ ----------
 function toggleMicrophone() {
     if (!localStream) return;
     const track = localStream.getAudioTracks()[0];
@@ -126,7 +106,6 @@ function updateMicButton(enabled) {
     }
 }
 
-// ---------- УПРАВЛЕНИЕ КАМЕРОЙ ----------
 function toggleCamera() {
     if (!localStream) return;
     const track = localStream.getVideoTracks()[0];
@@ -144,7 +123,6 @@ function updateCamButton(enabled) {
     }
 }
 
-// ---------- ДЕМОНСТРАЦИЯ ЭКРАНА ----------
 async function startScreenShare() {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -181,7 +159,7 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- УДАЛЕНИЕ ВИДЕО-ЭЛЕМЕНТА ----------
+// ---------- ВИДЕО-ЭЛЕМЕНТЫ ----------
 function removeVideoElement(peerId) {
     const container = document.getElementById(`container-${peerId}`);
     if (container) {
@@ -195,7 +173,6 @@ function removeVideoElement(peerId) {
     }
 }
 
-// ---------- ДОБАВЛЕНИЕ ВИДЕО-ЭЛЕМЕНТА ----------
 function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
@@ -231,7 +208,6 @@ function makeDraggable(element, handle) {
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
     handle.style.cursor = 'move';
     handle.addEventListener('mousedown', dragMouseDown);
-
     function dragMouseDown(e) {
         e.preventDefault();
         pos3 = e.clientX;
@@ -239,7 +215,6 @@ function makeDraggable(element, handle) {
         document.addEventListener('mousemove', elementDrag);
         document.addEventListener('mouseup', closeDragElement);
     }
-
     function elementDrag(e) {
         e.preventDefault();
         pos1 = pos3 - e.clientX;
@@ -259,7 +234,6 @@ function makeDraggable(element, handle) {
         element.style.bottom = 'auto';
         element.style.transform = 'none';
     }
-
     function closeDragElement() {
         document.removeEventListener('mousemove', elementDrag);
         document.removeEventListener('mouseup', closeDragElement);
@@ -311,27 +285,11 @@ function createPeerConnection(peerId) {
         console.log(`🔄 Signaling state [${peerId}]: ${pc.signalingState}`);
     };
 
-    pc.onnegotiationneeded = async () => {
-        console.log(`🤝 negotiationneeded для ${peerId}, роль: ${window.role}, состояние: ${pc.signalingState}`);
-        if (pc.signalingState !== 'stable') {
-            console.log(`⏳ negotiationneeded: состояние не stable (${pc.signalingState}), ждём`);
-            return;
-        }
-        if (pc._isNegotiating) {
-            console.log(`⏳ negotiationneeded: уже идёт переговорный процесс, пропускаем`);
-            return;
-        }
-        if (!localStream) {
-            console.log(`⏸️ negotiationneeded: нет локального потока, не создаём offer`);
-            return;
-        }
-        await negotiate(peerId, pc);
-    };
-
+    // 🔥 Убираем onnegotiationneeded — offer отправляем вручную, когда нужно
     return pc;
 }
 
-// ---------- НАВЕШИВАНИЕ КНОПОК ----------
+// ---------- КНОПКИ ----------
 function setupButtons() {
     const videoBtn = document.getElementById('tool-video');
     if (videoBtn) videoBtn.onclick = toggleVideoCall;
@@ -351,24 +309,6 @@ function setupButtons() {
     }
 }
 
-// ---------- ФУНКЦИЯ ОЖИДАНИЯ ПОТОКА ----------
-function waitForStreamAndOffer(peerId, pc, maxAttempts = 50) {
-    let attempts = 0;
-    const check = () => {
-        if (localStream) {
-            console.log(`✅ Поток получен, отправляю offer для ${peerId}`);
-            negotiate(peerId, pc);
-            return true;
-        }
-        if (attempts++ < maxAttempts) {
-            setTimeout(check, 100);
-        } else {
-            console.log(`⏰ Таймаут ожидания потока для ${peerId}`);
-        }
-    };
-    check();
-}
-
 // ---------- ИНИЦИАЛИЗАЦИЯ ----------
 function initWebRTC(socket, roomId, role) {
     if (webrtcInitialized) return;
@@ -384,85 +324,81 @@ function initWebRTC(socket, roomId, role) {
         if (socket.id) {
             socket.emit('join-video-room', { roomId, peerId: socket.id, role });
             console.log(`✅ Отправлен join-video-room, peerId: ${socket.id}`);
-        } else {
-            console.error('❌ socket.id не определён!');
         }
     };
 
-    if (socket.connected) {
-        joinVideoRoom();
-    } else {
-        socket.once('connect', joinVideoRoom);
-    }
+    if (socket.connected) joinVideoRoom();
+    else socket.once('connect', joinVideoRoom);
 
     // --- СОБЫТИЯ ---
-    socket.on('user-joined', async ({ peerId, role: remoteRole }) => {
-        if (!peerId) {
-            console.warn('⚠️ user-joined без peerId');
-            return;
+    // 🔥 НОВОЕ: получаем список уже присутствующих в комнате
+    socket.on('room-participants', (participants) => {
+        console.log(`📋 room-participants:`, participants);
+        for (const { peerId, role: peerRole } of participants) {
+            if (peerId === socket.id) continue;
+            const pc = createPeerConnection(peerId);
+            // Если мы ученик и у нас уже есть поток, отправляем offer; иначе сохраняем peerId
+            if (window.role === 'student') {
+                if (localStream) {
+                    // Добавляем треки и отправляем offer
+                    localStream.getTracks().forEach(track => {
+                        const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
+                        if (sender) sender.replaceTrack(track);
+                        else pc.addTrack(track, localStream);
+                    });
+                    sendOffer(peerId, pc);
+                } else {
+                    // Запоминаем peerId, чтобы отправить offer после получения потока
+                    pendingPeerIds.push(peerId);
+                }
+            }
         }
+    });
+
+    socket.on('user-joined', async ({ peerId, role: remoteRole }) => {
+        if (!peerId || peerId === socket.id) return;
         console.log(`👤 user-joined: ${peerId} (${remoteRole})`);
         
         removeVideoElement(peerId);
         if (peerConnections[peerId]) {
-            console.log(`🧹 Закрываем старое соединение с ${peerId}`);
             peerConnections[peerId].close();
             delete peerConnections[peerId];
         }
         
         const pc = createPeerConnection(peerId);
 
+        // Если у нас уже есть поток, добавляем его в PC
         if (localStream) {
             localStream.getTracks().forEach(track => {
                 const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
-                if (sender) {
-                    sender.replaceTrack(track);
-                    console.log(`🔄 replaceTrack для ${track.kind} (${peerId})`);
-                } else {
-                    pc.addTrack(track, localStream);
-                    console.log(`➕ addTrack для ${track.kind} (${peerId})`);
-                }
+                if (sender) sender.replaceTrack(track);
+                else pc.addTrack(track, localStream);
             });
         }
 
-        // 🔥 УЧЕНИК: если поток уже есть — отправляем offer сразу, иначе ждём
-        if (role === 'student') {
+        // 🔥 УЧЕНИК отправляет offer при подключении нового участника (если поток уже есть, иначе запомним)
+        if (window.role === 'student') {
             if (localStream) {
-                console.log(`🎓 Ученик отправляет offer для ${peerId} (поток уже есть)`);
-                setTimeout(() => {
-                    if (pc.signalingState === 'stable' && !pc._isNegotiating) {
-                        negotiate(peerId, pc);
-                    }
-                }, 200);
+                sendOffer(peerId, pc);
             } else {
-                console.log(`⏳ Ученик ожидает поток для отправки offer ${peerId}`);
-                waitForStreamAndOffer(peerId, pc);
+                pendingPeerIds.push(peerId);
             }
         }
-
-        // РЕПЕТИТОР НИКОГДА НЕ ИНИЦИИРУЕТ OFFER ПРИ user-joined
     });
 
     socket.on('receive-offer', async ({ from, offer }) => {
-        if (!from || !offer) return;
+        if (!from || from === socket.id) return;
         console.log(`📩 receive-offer от ${from}`);
         
         let pc = peerConnections[from];
-        if (!pc) {
-            console.log(`🔧 Создаём новое peer-соединение для ${from} (receive-offer)`);
-            pc = createPeerConnection(from);
-        }
+        if (!pc) pc = createPeerConnection(from);
 
+        // Добавляем локальные треки, если есть
         if (localStream) {
             localStream.getTracks().forEach(track => {
                 const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
-                if (sender) {
-                    sender.replaceTrack(track);
-                    console.log(`🔄 replaceTrack для ${track.kind} (${from})`);
-                } else {
-                    pc.addTrack(track, localStream);
-                    console.log(`➕ addTrack для ${track.kind} (${from})`);
-                }
+                if (sender) sender.replaceTrack(track);
+                else pc.addTrack(track, localStream);
             });
         }
 
@@ -478,52 +414,37 @@ function initWebRTC(socket, roomId, role) {
     });
 
     socket.on('receive-answer', ({ from, answer }) => {
-        if (!from || !answer) return;
+        if (!from || from === socket.id) return;
         const pc = peerConnections[from];
-        if (pc) {
-            if (pc.signalingState === 'have-local-offer') {
-                pc.setRemoteDescription(new RTCSessionDescription(answer))
-                    .then(() => console.log(`✅ Answer установлен для ${from}`))
-                    .catch(e => console.error('❌ Ошибка установки answer:', e));
-            } else {
-                console.log(`⚠️ receive-answer: состояние ${pc.signalingState}, игнорируем`);
-            }
+        if (pc && pc.signalingState === 'have-local-offer') {
+            pc.setRemoteDescription(new RTCSessionDescription(answer))
+                .then(() => console.log(`✅ Answer установлен для ${from}`))
+                .catch(e => console.error('❌ Ошибка установки answer:', e));
         }
     });
 
     socket.on('receive-ice-candidate', ({ from, candidate }) => {
-        if (!from || !candidate) return;
+        if (!from || from === socket.id) return;
         if (peerConnections[from]) {
             peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
         }
     });
 
-    socket.on('need-offer', ({ from }) => {
-        if (window.role === 'tutor' && localStream) {
-            console.log(`📞 need-offer получен от ${from}, ищу peerConnection`);
-            const pc = peerConnections[from];
-            if (pc) {
-                console.log(`✅ peerConnection найден, вызываю negotiate`);
-                negotiate(from, pc);
-            } else {
-                console.log(`❌ peerConnection для ${from} НЕ НАЙДЕН!`);
-            }
-        }
-    });
-
     socket.on('user-left', (peerId) => {
-        if (!peerId) return;
+        if (!peerId || peerId === socket.id) return;
         console.log(`👋 user-left: ${peerId}`);
         if (peerConnections[peerId]) {
             peerConnections[peerId].close();
             delete peerConnections[peerId];
         }
         removeVideoElement(peerId);
+        // Также удаляем из pending
+        pendingPeerIds = pendingPeerIds.filter(id => id !== peerId);
     });
 
     setupButtons();
 
-    // 🔥 АВТОСТАРТ УЧЕНИКА
+    // 🔥 АВТОСТАРТ ДЛЯ УЧЕНИКА
     if (role === 'student') {
         if (socket.connected) {
             startVideoCall(true);

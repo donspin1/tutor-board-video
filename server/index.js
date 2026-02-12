@@ -120,6 +120,25 @@ io.on('connection', (socket) => {
         if (!socket.videoRooms.includes(videoRoom)) {
             socket.videoRooms.push(videoRoom);
         }
+
+        // 🔥 НОВОЕ: отправляем новому участнику список уже присутствующих пиров
+        const roomSockets = io.sockets.adapter.rooms.get(videoRoom);
+        if (roomSockets) {
+            const participants = Array.from(roomSockets)
+                .filter(id => id !== socket.id) // исключаем себя
+                .map(id => ({ peerId: id, role: getRoleBySocketId(id) })); // нужно как-то получить роль; упростим: будем передавать только peerId, а роль узнаем позже?
+            // Проще передать только peerId, а роль определим по тому, что репетитор — единственный, кто не ученик? Нет, могут быть несколько учеников.
+            // Решение: будем передавать peerId и role, которые были переданы при join-video-room.
+            // Для этого нужно хранить роли сокетов. Временно передадим только peerId, а клиент при создании PC будет считать, что это репетитор (если он ученик) или ученик (если он репетитор) — но это ненадёжно.
+            // Лучше хранить роли в памяти сервера.
+            if (!global.socketRoles) global.socketRoles = new Map();
+            global.socketRoles.set(socket.id, role);
+            const participantList = Array.from(roomSockets)
+                .filter(id => id !== socket.id)
+                .map(id => ({ peerId: id, role: global.socketRoles.get(id) }));
+            socket.emit('room-participants', participantList);
+        }
+
         socket.to(videoRoom).emit('user-joined', { peerId, role });
         console.log(`🎥 ${role} (${peerId}) присоединился к ${videoRoom}`);
     });
@@ -146,13 +165,6 @@ io.on('connection', (socket) => {
     socket.on('send-ice-candidate', ({ toPeerId, candidate }) => {
         if (!toPeerId || !candidate) return;
         io.to(toPeerId).emit('receive-ice-candidate', { from: socket.id, candidate });
-    });
-
-    // 🔥 ИСПРАВЛЕНО: Обработчик need-offer (обязательно)
-    socket.on('need-offer', ({ toPeerId }) => {
-        if (!toPeerId) return;
-        io.to(toPeerId).emit('need-offer', { from: socket.id });
-        console.log(`📞 need-offer от ${socket.id} к ${toPeerId}`);
     });
 
     // ---------- ОТКЛЮЧЕНИЕ ----------
