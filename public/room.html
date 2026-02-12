@@ -1,35 +1,34 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Room</title>
-<link rel="stylesheet" href="/css/style.css">
+  <meta charset="UTF-8" />
+  <title>Whiteboard Room</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<div class="top-bar">
-  <div id="roomName"></div>
-</div>
+<div class="container">
 
-<div class="main">
-
-  <div class="video-panel">
+  <div class="video-section">
     <video id="localVideo" autoplay muted playsinline></video>
-    <div id="videos"></div>
   </div>
 
-  <div class="board-panel">
+  <div class="board-section">
+
+    <div class="toolbar">
+      <input type="color" id="colorPicker" value="#000000">
+      <input type="range" id="brushSize" min="1" max="50" value="3">
+      <button id="eraserBtn">Eraser</button>
+      <button id="clearBtn">Clear</button>
+    </div>
+
     <canvas id="board"></canvas>
+
   </div>
 
-</div>
-
-<div class="controls">
-  <button id="clearBtn">Clear</button>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="/js/room.js"></script>
-
+<script src="room.js"></script>
 </body>
 </html>
