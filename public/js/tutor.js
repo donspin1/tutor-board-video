@@ -1,4 +1,4 @@
-// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (отправка полного JSON с размерами)
+// tutor.js — ПОЛНАЯ СИНХРОНИЗАЦИЯ + DEBOUNCE + ПЕРЕДАЧА РАЗМЕРОВ
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -35,11 +35,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDrawingShape = false;
     let startX, startY, shape;
 
-    // ---------- ФУНКЦИЯ ОТПРАВКИ ПОЛНОГО JSON (С РАЗМЕРАМИ) ----------
+    // ---------- DEBOUNCE ОТПРАВКИ ----------
+    let sendTimeout;
+    function debouncedSend() {
+        clearTimeout(sendTimeout);
+        sendTimeout = setTimeout(sendCanvasState, 300);
+    }
+
     function sendCanvasState() {
         const json = canvas.toJSON(['id']);
-        json.width = canvas.getWidth();      // добавляем реальную ширину
-        json.height = canvas.getHeight();    // добавляем реальную высоту
+        json.width = canvas.getWidth();
+        json.height = canvas.getHeight();
         json.background = canvas.backgroundColor || 'white';
         socket.emit('canvas-state', { roomId, canvasJson: json });
     }
@@ -51,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const usernameEl = document.getElementById('username-display');
     if (usernameEl) usernameEl.innerHTML = `<i class="fas fa-user"></i> ${userName}`;
 
-    // ---------- ЦВЕТОВАЯ ПАЛИТРА ----------
+    // ---------- ПАЛИТРА ----------
     const colors = ['#000000', '#ffffff', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#64748b'];
     const palette = document.getElementById('color-palette');
     if (palette) {
@@ -98,7 +104,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('tool-pencil')?.classList.add('active');
 
-    // ---------- РИСОВАНИЕ ФИГУР ----------
+    // ---------- РИСОВАНИЕ ----------
+    canvas.on('mouse:up', () => {
+        if (shape) {
+            shape.set({ selectable: true, evented: true, id: 'obj-' + Date.now() });
+            shape = null;
+            debouncedSend();
+        }
+        isDrawingShape = false;
+    });
+
+    canvas.on('path:created', (e) => {
+        e.path.set({ id: 'obj-' + Date.now() });
+        debouncedSend();
+    });
+
+    canvas.on('object:modified', debouncedSend);
+    canvas.on('object:removed', debouncedSend);
+
+    // ---------- ФИГУРЫ ----------
     canvas.on('mouse:down', (opt) => {
         if (['line', 'rect', 'circle'].includes(currentTool)) {
             isDrawingShape = true;
@@ -129,11 +153,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             canvas.add(text);
             text.enterEditing();
+            debouncedSend();
         } else if (currentTool === 'eraser') {
             const target = canvas.findTarget(opt.e);
             if (target) {
                 canvas.remove(target);
-                sendCanvasState();
                 socket.emit('remove-object', { roomId, id: target.id });
             }
         }
@@ -159,28 +183,6 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.renderAll();
     });
 
-    canvas.on('mouse:up', () => {
-        if (shape) {
-            shape.set({ selectable: true, evented: true, id: 'obj-' + Date.now() });
-            sendCanvasState(); // отправляем после добавления фигуры
-            shape = null;
-        }
-        isDrawingShape = false;
-    });
-
-    canvas.on('path:created', (e) => {
-        e.path.set({ id: 'obj-' + Date.now() });
-        sendCanvasState(); // отправляем после рисования
-    });
-
-    canvas.on('object:modified', () => {
-        sendCanvasState(); // перемещение, масштабирование и т.д.
-    });
-
-    canvas.on('object:removed', () => {
-        sendCanvasState(); // удаление
-    });
-
     // ---------- ЗАГРУЗКА ИЗОБРАЖЕНИЙ ----------
     document.getElementById('tool-upload')?.addEventListener('click', () => {
         const input = document.createElement('input');
@@ -200,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             top: (canvas.height - img.height * scale) / 2
                         });
                         canvas.add(img);
-                        sendCanvasState();
+                        debouncedSend();
                     });
                 };
                 reader.readAsDataURL(file);
@@ -269,18 +271,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ---------- SOCKET.IO ----------
+    // ---------- SOCKET ----------
     socket.emit('join-room', roomId, 'tutor');
 
-    socket.on('init-canvas', (data) => {
-        if (data.canvasJson) {
-            canvas.loadFromJSON(data.canvasJson, () => {
+    socket.on('init-canvas', ({ canvasJson, locked }) => {
+        if (canvasJson) {
+            canvas.loadFromJSON(canvasJson, () => {
                 canvas.renderAll();
                 resizeCanvas();
             });
         }
-        if (data.locked !== undefined) {
-            isLocked = data.locked;
+        if (locked !== undefined) {
+            isLocked = locked;
             if (lockBtn) {
                 lockBtn.classList.toggle('locked', isLocked);
                 lockBtn.innerHTML = isLocked ? '<i class="fas fa-lock"></i>' : '<i class="fas fa-unlock-alt"></i>';
@@ -288,17 +290,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ---------- ПОЛУЧЕНИЕ ДЕЙСТВИЙ ОТ УЧЕНИКА ----------
+    socket.on('draw-to-client', (obj) => {
+        fabric.util.enlivenObjects([obj], (objects) => {
+            objects.forEach(o => {
+                const existing = canvas.getObjects().find(item => item.id === o.id);
+                if (existing) canvas.remove(existing);
+                canvas.add(o);
+            });
+            canvas.renderAll();
+            debouncedSend();
+        });
+    });
+
     socket.on('remove-object', (id) => {
         const obj = canvas.getObjects().find(o => o.id === id);
-        if (obj) {
-            canvas.remove(obj);
-            sendCanvasState();
-        }
+        if (obj) canvas.remove(obj);
+        canvas.renderAll();
+        debouncedSend();
     });
 
     socket.on('clear-canvas', () => {
         canvas.clear();
         canvas.backgroundColor = 'white';
+        canvas.renderAll();
         sendCanvasState();
     });
 
@@ -307,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initWebRTC(socket, roomId, 'tutor');
     }
 
-    // ---------- ПЕРЕТАСКИВАНИЕ ПАНЕЛИ СВОЙСТВ ----------
+    // ---------- ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ ----------
     const propsPanel = document.getElementById('properties-panel');
     if (propsPanel && typeof makeDraggable === 'function') {
         const handle = propsPanel.querySelector('.panel-header');
@@ -317,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ---------- СБРОС ВИДЕО ПРИ ВЫХОДЕ ----------
+    // ---------- ВЫХОД ----------
     const exitBtn = document.getElementById('tool-exit');
     if (exitBtn) {
         exitBtn.addEventListener('click', () => {
@@ -327,7 +342,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ---------- ЗАКРЫТИЕ ПАНЕЛИ СВОЙСТВ ----------
     document.getElementById('close-properties')?.addEventListener('click', () => {
         document.getElementById('properties-panel')?.classList.remove('active');
     });

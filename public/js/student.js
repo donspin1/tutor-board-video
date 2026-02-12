@@ -1,4 +1,4 @@
-// student.js — ПОЛНОЕ МАСШТАБИРОВАНИЕ И ЦЕНТРИРОВАНИЕ
+// student.js — ИСПРАВЛЕННОЕ МАСШТАБИРОВАНИЕ С ЦЕНТРИРОВАНИЕМ + УБРАН АВТОСТАРТ ВИДЕО
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selection: false 
     });
 
-    // ---------- ФУНКЦИЯ МАСШТАБИРОВАНИЯ И ЦЕНТРИРОВАНИЯ ----------
+    // ---------- ПРАВИЛЬНОЕ МАСШТАБИРОВАНИЕ С ЦЕНТРИРОВАНИЕМ ----------
     function applyCanvasState(stateJson) {
         const width = canvas.getWidth();
         const height = canvas.getHeight();
@@ -28,18 +28,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const originalHeight = stateJson.height;
 
             if (!originalWidth || !originalHeight) {
-                console.warn('Нет оригинальных размеров, используем текущие');
+                console.warn('Нет оригинальных размеров');
                 canvas.renderAll();
                 return;
             }
 
-            // Равномерное масштабирование (fit)
             const scaleX = width / originalWidth;
             const scaleY = height / originalHeight;
-            const scale = Math.min(scaleX, scaleY); // сохраняем пропорции
+            const scale = Math.min(scaleX, scaleY);
 
-            // Масштабируем все объекты
-            canvas.getObjects().forEach(obj => {
+            const objects = canvas.getObjects();
+            objects.forEach(obj => {
                 obj.scaleX = (obj.scaleX || 1) * scale;
                 obj.scaleY = (obj.scaleY || 1) * scale;
                 obj.left = (obj.left || 0) * scale;
@@ -49,16 +48,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (obj.radius) obj.radius *= scale;
                 if (obj.x1 !== undefined) { obj.x1 *= scale; obj.x2 *= scale; }
                 if (obj.y1 !== undefined) { obj.y1 *= scale; obj.y2 *= scale; }
-                
-                // Для рисованных линий (path)
+
+                // Масштабирование path (рисование карандашом)
                 if (obj.type === 'path' && obj.path) {
                     obj.path.forEach(command => {
                         if (Array.isArray(command) && command.length >= 3) {
                             for (let i = 1; i < command.length; i += 2) {
-                                command[i] *= scale;       // x
-                                if (i + 1 < command.length) {
-                                    command[i + 1] *= scale; // y
-                                }
+                                command[i] *= scale;     // x
+                                if (i + 1 < command.length) command[i + 1] *= scale; // y
                             }
                         }
                     });
@@ -72,20 +69,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const offsetX = (width - scaledWidth) / 2;
             const offsetY = (height - scaledHeight) / 2;
 
-            canvas.getObjects().forEach(obj => {
+            objects.forEach(obj => {
                 if (obj.left !== undefined) obj.left += offsetX;
                 if (obj.top !== undefined) obj.top += offsetY;
                 if (obj.x1 !== undefined) { obj.x1 += offsetX; obj.x2 += offsetX; }
                 if (obj.y1 !== undefined) { obj.y1 += offsetY; obj.y2 += offsetY; }
-                
                 if (obj.type === 'path' && obj.path) {
                     obj.path.forEach(command => {
                         if (Array.isArray(command) && command.length >= 3) {
                             for (let i = 1; i < command.length; i += 2) {
                                 command[i] += offsetX;
-                                if (i + 1 < command.length) {
-                                    command[i + 1] += offsetY;
-                                }
+                                if (i + 1 < command.length) command[i + 1] += offsetY;
                             }
                         }
                     });
@@ -98,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resizeCanvas() {
-        const container = document.querySelector('.canvas-container');
+        const container = document.querySelector('.canvas-container') || document.querySelector('.canvas-area');
         if (!container) return;
         canvas.setWidth(container.clientWidth);
         canvas.setHeight(container.clientHeight);
@@ -154,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     pencilBtn?.classList.add('active');
 
-    // ---------- РИСОВАНИЕ (УЧЕНИК) ----------
+    // ---------- РИСОВАНИЕ ----------
     canvas.on('path:created', (e) => {
         if (!hasAccess) {
             canvas.remove(e.path);
@@ -176,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ---------- БЛОКИРОВКА ДОСТУПА ----------
+    // ---------- БЛОКИРОВКА ----------
     socket.on('admin-lock-status', (locked) => {
         hasAccess = !locked;
         canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
@@ -206,22 +200,18 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.href = '/';
     });
 
-    // ---------- СИНХРОНИЗАЦИЯ ДОСКИ ----------
+    // ---------- СИНХРОНИЗАЦИЯ ----------
     socket.emit('join-room', roomId, 'student');
 
-    socket.on('init-canvas', (data) => {
-        if (data.canvasJson) {
-            applyCanvasState(data.canvasJson);
-        }
+    socket.on('init-canvas', ({ canvasJson }) => {
+        if (canvasJson) applyCanvasState(canvasJson);
         resizeCanvas();
     });
 
-    // ---------- ПОЛУЧЕНИЕ ПОЛНОГО СОСТОЯНИЯ ----------
     socket.on('canvas-state', ({ canvasJson }) => {
         applyCanvasState(canvasJson);
     });
 
-    // ---------- ПОЛУЧЕНИЕ ОТДЕЛЬНЫХ ОБЪЕКТОВ (от учеников) ----------
     socket.on('draw-to-client', (obj) => {
         fabric.util.enlivenObjects([obj], (objects) => {
             const objToAdd = objects[0];
@@ -235,26 +225,18 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('remove-object', (id) => {
         const obj = canvas.getObjects().find(o => o.id === id);
         if (obj) canvas.remove(obj);
+        canvas.renderAll();
     });
 
     socket.on('clear-canvas', () => {
         canvas.clear();
         canvas.backgroundColor = 'white';
+        canvas.renderAll();
     });
 
     // ---------- ВИДЕО ----------
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'student');
-        setTimeout(() => {
-            if (typeof window.isVideoActive !== 'undefined' && window.isVideoActive === true) {
-                if (typeof stopVideoCall === 'function') stopVideoCall();
-            }
-            setTimeout(() => {
-                if (typeof startVideoCall === 'function') {
-                    startVideoCall().catch(err => console.warn('Не удалось автостартовать видео:', err));
-                }
-            }, 300);
-        }, 1000);
     }
 
     // ---------- УВЕДОМЛЕНИЯ ----------
