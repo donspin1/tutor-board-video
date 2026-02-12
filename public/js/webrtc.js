@@ -1,4 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (фиксированные m-lines, без дублей negotiation)
+// webrtc.js — ФИНАЛЬНАЯ ПРОДАКШН-ВЕРСИЯ (без negotiationneeded, sendrecv, автостарт через connect)
 
 let localStream = null;
 let peerConnections = {};
@@ -12,7 +12,6 @@ async function negotiate(peerId, pc) {
         return;
     }
     if (window.role !== 'tutor') {
-        // console.log(`⏸️ negotiate: не репетитор, пропускаем`);
         return;
     }
     if (pc.signalingState !== 'stable') {
@@ -57,11 +56,14 @@ async function startVideoCall(isSilent = false) {
 
         // Добавляем треки во все существующие peer-соединения
         for (const [peerId, pc] of Object.entries(peerConnections)) {
-            const senders = pc.getSenders().map(s => s.track?.kind);
             localStream.getTracks().forEach(track => {
-                if (!senders.includes(track.kind)) {
+                const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
+                if (sender) {
+                    sender.replaceTrack(track);
+                    console.log(`🔄 replaceTrack для ${track.kind} (${peerId})`);
+                } else {
                     pc.addTrack(track, localStream);
-                    console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
+                    console.log(`➕ addTrack для ${track.kind} (${peerId})`);
                 }
             });
 
@@ -256,7 +258,7 @@ function makeDraggable(element, handle) {
     }
 }
 
-// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ (С ФИКСИРОВАННЫМИ TRANSCEIVERS) ----------
+// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ (sendrecv, БЕЗ negotiationneeded) ----------
 function createPeerConnection(peerId) {
     if (peerConnections[peerId]) {
         console.warn(`⚠️ Соединение с ${peerId} уже есть, закрываем`);
@@ -271,13 +273,11 @@ function createPeerConnection(peerId) {
         ]
     });
 
-    // 🔥 ИСПРАВЛЕНО: Фиксируем порядок m-lines: сначала audio, потом video
-    // Добавляем transceivers для аудио и видео с направлением recvonly (будет обновлено при добавлении треков)
-    pc.addTransceiver('audio', { direction: 'recvonly' });
-    pc.addTransceiver('video', { direction: 'recvonly' });
-    console.log(`🔧 Создано peer-соединение для ${peerId} с фиксированными transceivers`);
+    // 🔥 ИСПРАВЛЕНО: direction: 'sendrecv' — и принимаем, и отправляем
+    pc.addTransceiver('audio', { direction: 'sendrecv' });
+    pc.addTransceiver('video', { direction: 'sendrecv' });
+    console.log(`🔧 Создано peer-соединение для ${peerId} (sendrecv)`);
 
-    // Флаг для предотвращения параллельных negotiation
     pc._isNegotiating = false;
 
     peerConnections[peerId] = pc;
@@ -305,23 +305,7 @@ function createPeerConnection(peerId) {
         console.log(`🔄 Signaling state [${peerId}]: ${pc.signalingState}`);
     };
 
-    pc.onnegotiationneeded = async () => {
-        console.log(`🤝 negotiationneeded для ${peerId}, роль: ${window.role}, состояние: ${pc.signalingState}`);
-        if (pc.signalingState !== 'stable') {
-            console.log(`⏳ negotiationneeded: состояние не stable (${pc.signalingState}), ждём`);
-            return;
-        }
-        if (pc._isNegotiating) {
-            console.log(`⏳ negotiationneeded: уже идёт переговорный процесс, пропускаем`);
-            return;
-        }
-        if (window.role === 'tutor') {
-            await negotiate(peerId, pc);
-        } else if (window.role === 'student') {
-            console.log(`📞 Ученик отправляет need-offer для репетитора (${peerId})`);
-            window.socket.emit('need-offer', { toPeerId: peerId });
-        }
-    };
+    // 🔥 ИСПРАВЛЕНО: onnegotiationneeded ПОЛНОСТЬЮ УДАЛЁН
 
     return pc;
 }
@@ -391,7 +375,6 @@ function initWebRTC(socket, roomId, role) {
 
         if (localStream) {
             localStream.getTracks().forEach(track => {
-                // При добавлении трека используем replaceTrack на существующем transceiver или addTrack
                 const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
                 if (sender) {
                     sender.replaceTrack(track);
@@ -423,7 +406,7 @@ function initWebRTC(socket, roomId, role) {
             pc = createPeerConnection(from);
         }
 
-        // Добавляем локальные треки (если есть) через replaceTrack / addTrack
+        // Добавляем локальные треки (если есть)
         if (localStream) {
             localStream.getTracks().forEach(track => {
                 const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
@@ -469,6 +452,7 @@ function initWebRTC(socket, roomId, role) {
         }
     });
 
+    // 🔥 ИСПРАВЛЕНО: обработчик need-offer ОСТАВЛЕН (для репетитора, но ученик его больше не шлёт)
     socket.on('need-offer', ({ from }) => {
         if (window.role === 'tutor') {
             console.log(`📞 need-offer получен от ${from}, ищу peerConnection`);
@@ -494,18 +478,14 @@ function initWebRTC(socket, roomId, role) {
 
     setupButtons();
 
-    // АВТОСТАРТ ДЛЯ УЧЕНИКА
+    // 🔥 ИСПРАВЛЕНО: АВТОСТАРТ УЧЕНИКА БЕЗ ТАЙМАУТА, СРАЗУ ПОСЛЕ CONNECT
     if (role === 'student') {
-        const startVideo = () => {
-            console.log('⏳ Автостарт видео ученика через 1.5с');
-            setTimeout(() => {
-                startVideoCall(true);
-            }, 1500);
-        };
         if (socket.connected) {
-            startVideo();
+            startVideoCall(true);
         } else {
-            socket.once('connect', startVideo);
+            socket.once('connect', () => {
+                startVideoCall(true);
+            });
         }
     }
 }
