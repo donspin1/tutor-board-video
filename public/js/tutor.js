@@ -1,4 +1,4 @@
-// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (синхронизация canvas-state и получение рисунков учеников)
+// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (синхронизация canvas-state + приём рисунков ученика)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -11,10 +11,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const userName = decodeURIComponent(urlParams.get('name') || 'Репетитор');
 
+    // ---------- CANVAS ----------
     const canvas = new fabric.Canvas('canvas', { backgroundColor: 'white' });
 
     function resizeCanvas() {
-        const container = document.querySelector('.canvas-area');
+        const container = document.querySelector('.canvas-container');
         if (!container) return;
         canvas.setWidth(container.clientWidth);
         canvas.setHeight(container.clientHeight);
@@ -22,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     window.addEventListener('resize', resizeCanvas);
     setTimeout(resizeCanvas, 100);
+    setTimeout(resizeCanvas, 300);
 
     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
     canvas.freeDrawingBrush.width = 5;
@@ -34,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDrawingShape = false;
     let startX, startY, shape;
 
+    // ---------- ОТПРАВКА ПОЛНОГО СОСТОЯНИЯ ----------
     function sendCanvasState() {
         const json = canvas.toJSON(['id']);
         json.width = canvas.getWidth();
@@ -42,12 +45,14 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('canvas-state', { roomId, canvasJson: json });
     }
 
+    // ---------- UI ----------
     const roomIdEl = document.getElementById('room-id');
     if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
     
     const usernameEl = document.getElementById('username-display');
     if (usernameEl) usernameEl.innerHTML = `<i class="fas fa-user"></i> ${userName}`;
 
+    // ---------- ЦВЕТОВАЯ ПАЛИТРА ----------
     const colors = ['#000000', '#ffffff', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#64748b'];
     const palette = document.getElementById('color-palette');
     if (palette) {
@@ -65,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ---------- РАЗМЕР КИСТИ ----------
     const brushSlider = document.getElementById('brush-slider');
     if (brushSlider) {
         brushSlider.addEventListener('input', (e) => {
@@ -74,6 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ---------- ИНСТРУМЕНТЫ ----------
     document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             if (btn.id === 'tool-video') return;
@@ -92,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('tool-pencil')?.classList.add('active');
 
+    // ---------- РИСОВАНИЕ ФИГУР ----------
     canvas.on('mouse:down', (opt) => {
         if (['line', 'rect', 'circle'].includes(currentTool)) {
             isDrawingShape = true;
@@ -169,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.on('object:modified', () => sendCanvasState());
     canvas.on('object:removed', () => sendCanvasState());
 
+    // ---------- ЗАГРУЗКА ИЗОБРАЖЕНИЙ ----------
     document.getElementById('tool-upload')?.addEventListener('click', () => {
         const input = document.createElement('input');
         input.type = 'file';
@@ -196,6 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
         input.click();
     });
 
+    // ---------- ОЧИСТКА ----------
     document.getElementById('tool-clear')?.addEventListener('click', () => {
         if (confirm('Очистить всё?')) {
             canvas.clear();
@@ -212,6 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sendCanvasState();
     });
 
+    // ---------- СОХРАНЕНИЕ ----------
     document.getElementById('tool-save')?.addEventListener('click', () => {
         const link = document.createElement('a');
         link.download = `board-${roomId}.png`;
@@ -219,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         link.click();
     });
 
+    // ---------- КОПИРОВАНИЕ ----------
     function copyToClipboard(text, msg) {
         if (navigator.clipboard) {
             navigator.clipboard.writeText(text).then(() => showNotification(msg));
@@ -240,6 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ---------- БЛОКИРОВКА ----------
     let isLocked = false;
     const lockBtn = document.getElementById('lock-btn');
     if (lockBtn) {
@@ -252,6 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ---------- SOCKET.IO ----------
     socket.emit('join-room', roomId, 'tutor');
 
     socket.on('init-canvas', (data) => {
@@ -270,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 👇 ПОЛУЧАЕМ РИСУНКИ ОТ УЧЕНИКА И ОБНОВЛЯЕМ СВОЙ ХОЛСТ
+    // 👇 ПОЛУЧАЕМ РИСУНКИ ОТ УЧЕНИКА
     socket.on('draw-to-client', (obj) => {
         fabric.util.enlivenObjects([obj], (objects) => {
             const objToAdd = objects[0];
@@ -278,8 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (existing) canvas.remove(existing);
             canvas.add(objToAdd);
             canvas.renderAll();
-            // ОТПРАВЛЯЕМ ОБНОВЛЁННОЕ СОСТОЯНИЕ ВСЕМ (включая других учеников)
-            sendCanvasState();
+            sendCanvasState(); // синхронизируем со всеми
         });
     });
 
@@ -297,10 +310,12 @@ document.addEventListener('DOMContentLoaded', () => {
         sendCanvasState();
     });
 
+    // ---------- WEBRTC ----------
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'tutor');
     }
 
+    // ---------- ПЕРЕТАСКИВАНИЕ ПАНЕЛИ СВОЙСТВ ----------
     const propsPanel = document.getElementById('properties-panel');
     if (propsPanel && typeof makeDraggable === 'function') {
         const handle = propsPanel.querySelector('.panel-header');
@@ -310,6 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ---------- СБРОС ВИДЕО ПРИ ВЫХОДЕ ----------
     const exitBtn = document.getElementById('tool-exit');
     if (exitBtn) {
         exitBtn.addEventListener('click', () => {
@@ -319,10 +335,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ---------- ЗАКРЫТИЕ ПАНЕЛИ СВОЙСТВ ----------
     document.getElementById('close-properties')?.addEventListener('click', () => {
         document.getElementById('properties-panel')?.classList.remove('active');
     });
 
+    // ---------- УВЕДОМЛЕНИЯ ----------
     function showNotification(msg, duration = 3000) {
         const notif = document.getElementById('notification');
         if (notif) {

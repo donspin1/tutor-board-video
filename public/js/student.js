@@ -1,4 +1,4 @@
-// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (передача рисунков в координатах репетитора)
+// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (без автостарта камеры, с преобразованием координат)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentOffsetX = 0;
     let currentOffsetY = 0;
 
-    // ---------- ФУНКЦИЯ МАСШТАБИРОВАНИЯ ЧЕРЕЗ VIEWPORT ----------
+    // ---------- МАСШТАБИРОВАНИЕ И ЦЕНТРИРОВАНИЕ (viewportTransform) ----------
     function applyCanvasState(stateJson) {
         originalWidth = stateJson.width;
         originalHeight = stateJson.height;
@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ---------- ПРЕОБРАЗОВАНИЕ КООРДИНАТ ИЗ ЭКРАНА УЧЕНИКА В ОРИГИНАЛЬНЫЕ ----------
+    // ---------- ПРЕОБРАЗОВАНИЕ КООРДИНАТ В ОРИГИНАЛЬНУЮ СИСТЕМУ РЕПЕТИТОРА ----------
     function studentToOriginalCoords(obj) {
         if (!obj) return obj;
         const newObj = JSON.parse(JSON.stringify(obj));
@@ -173,7 +173,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         e.path.set({ id: 'student-' + Date.now() });
         
-        // Преобразуем координаты в оригинальные и отправляем
         const pathData = e.path.toObject(['id']);
         const originalCoordsData = studentToOriginalCoords(pathData);
         socket.emit('drawing-data', { roomId, object: originalCoordsData });
@@ -254,19 +253,9 @@ document.addEventListener('DOMContentLoaded', () => {
         originalHeight = null;
     });
 
-    // ---------- ВИДЕО ----------
+    // ---------- ВИДЕО — ТОЛЬКО ИНИЦИАЛИЗАЦИЯ, БЕЗ АВТОСТАРТА ----------
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'student');
-        setTimeout(() => {
-            if (typeof window.isVideoActive !== 'undefined' && window.isVideoActive === true) {
-                if (typeof stopVideoCall === 'function') stopVideoCall();
-            }
-            setTimeout(() => {
-                if (typeof startVideoCall === 'function') {
-                    startVideoCall().catch(err => console.warn('Не удалось автостартовать видео:', err));
-                }
-            }, 300);
-        }, 1000);
     }
 
     // ---------- УВЕДОМЛЕНИЯ ----------
