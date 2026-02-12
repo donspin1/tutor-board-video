@@ -346,40 +346,44 @@ body {
 }
 
 /* ==================================================================
-   МОБИЛЬНАЯ АДАПТАЦИЯ — ИДЕАЛЬНЫЙ ПОРЯДОК, ДОСКА 16:9
+   МОБИЛЬНАЯ АДАПТАЦИЯ — КНОПКИ ВСЕГДА ВИДНЫ СРАЗУ ПОД ДОСКОЙ
    ================================================================== */
 @media (max-width: 900px) {
+    body {
+        overflow-y: auto !important; /* Разрешаем скролл, чтобы кнопки были доступны */
+        height: auto !important;
+    }
+
     .board-container {
         display: flex !important;
         flex-direction: column !important;
-        height: 100vh !important;
-        width: 100vw !important;
+        height: auto !important;
+        min-height: 100vh !important;
+        padding-bottom: 20px !important; /* Небольшой отступ снизу */
     }
 
     .sidebar {
-        order: 2 !important;
+        order: 3 !important; /* Кнопки строго после всего контента */
         width: 100% !important;
         height: auto !important;
         flex-direction: row !important;
         justify-content: flex-start !important;
-        padding: 8px !important;
-        gap: 8px !important;
+        padding: 10px !important;
+        gap: 10px !important;
         background: white !important;
         border-top: 1px solid #e2e8f0 !important;
-        border-bottom: none !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
         flex-shrink: 0 !important;
-        margin: 0 !important;
+        box-shadow: 0 -4px 12px rgba(0,0,0,0.08) !important;
+        z-index: 50 !important;
     }
 
     .main-area {
         order: 1 !important;
         display: flex !important;
         flex-direction: column !important;
-        flex: 1 1 0 !important;
-        min-height: 0 !important;
-        padding: 10px 10px 0 10px !important;
+        padding: 10px 10px 20px 10px !important; /* Отступ снизу, чтобы кнопки не перекрывали контент */
     }
 
     .top-bar {
@@ -399,11 +403,11 @@ body {
         border-radius: 16px !important;
         overflow: hidden !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 15px !important;
     }
 
     .video-panel {
-        order: 1 !important;
+        order: 2 !important; /* Видео между топ-баром и доской */
         position: relative !important;
         top: auto !important;
         right: auto !important;
@@ -413,7 +417,7 @@ body {
         border: 1px solid #e2e8f0 !important;
         border-radius: 12px !important;
         padding: 12px !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 15px !important;
         display: none;
         flex-shrink: 0 !important;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
@@ -423,7 +427,7 @@ body {
         color: var(--dark) !important;
     }
 
-    .video-panel .ビデオ-btn {
+    .video-panel .video-btn {
         background: var(--light) !important;
         color: var(--gray) !important;
     }
@@ -439,7 +443,7 @@ body {
     }
 
     .canvas-container {
-        order: 2 !important;
+        order: 3 !important;
         aspect-ratio: 16 / 9 !important;
         width: 100% !important;
         height: auto !important;

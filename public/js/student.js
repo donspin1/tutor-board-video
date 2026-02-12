@@ -1,4 +1,4 @@
-// student.js — ИСПРАВЛЕННОЕ МАСШТАБИРОВАНИЕ С ЦЕНТРИРОВАНИЕМ + УБРАН АВТОСТАРТ ВИДЕО
+// student.js — ИСПРАВЛЕНО: автостарт видео + resize после обновлений состояния
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -87,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 obj.setCoords();
             });
 
+            canvas.backgroundColor = stateJson.background || 'white';
             canvas.renderAll();
         });
     }
@@ -210,6 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('canvas-state', ({ canvasJson }) => {
         applyCanvasState(canvasJson);
+        resizeCanvas(); // <<< ВАЖНО: подгонка размера после обновления состояния
     });
 
     socket.on('draw-to-client', (obj) => {
@@ -237,6 +239,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---------- ВИДЕО ----------
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'student');
+
+        // Автостарт видео у ученика при входе
+        setTimeout(() => {
+            if (typeof startVideoCall === 'function') {
+                startVideoCall().catch(err => console.warn('Не удалось автоматически запустить видео:', err));
+            }
+        }, 1000);
     }
 
     // ---------- УВЕДОМЛЕНИЯ ----------
