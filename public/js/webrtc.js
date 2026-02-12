@@ -1,4 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (исправлено повторное подключение, застывшие кадры)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (полная очистка при отключении и переподключении)
 
 let localStream = null;
 let peerConnections = {};
@@ -31,7 +31,7 @@ async function startVideoCall(isSilent = false) {
 
         addVideoElement(window.socket.id, localStream, true);
 
-        // Добавляем треки во ВСЕ существующие peer-соединения и форсируем переговоры
+        // Добавляем треки во все существующие peer-соединения и форсируем переговоры
         for (const [peerId, pc] of Object.entries(peerConnections)) {
             const senders = pc.getSenders().map(s => s.track?.kind);
             localStream.getTracks().forEach(track => {
@@ -40,7 +40,6 @@ async function startVideoCall(isSilent = false) {
                     console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
                 }
             });
-            // Принудительная пересылка offer, если треки только что добавлены
             await negotiate(peerId, pc);
         }
 
@@ -144,14 +143,28 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- ОТОБРАЖЕНИЕ ВИДЕО ----------
+// ---------- ПОЛНОЕ УДАЛЕНИЕ ВИДЕО-ЭЛЕМЕНТА ----------
+function removeVideoElement(peerId) {
+    const container = document.getElementById(`container-${peerId}`);
+    if (container) {
+        // Останавливаем видео-поток
+        const video = container.querySelector('video');
+        if (video && video.srcObject) {
+            video.srcObject.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+        }
+        container.remove();
+        console.log(`🗑️ Удалён видео-элемент для ${peerId}`);
+    }
+}
+
+// ---------- ДОБАВЛЕНИЕ ВИДЕО-ЭЛЕМЕНТА ----------
 function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
 
-    // Удаляем старый контейнер, если он есть (важно при переподключении с новым peerId)
-    const existing = document.getElementById(`container-${peerId}`);
-    if (existing) existing.remove();
+    // Принудительно удаляем старый контейнер, если он есть
+    removeVideoElement(peerId);
 
     const container = document.createElement('div');
     container.className = 'video-container';
@@ -173,10 +186,7 @@ function addVideoElement(peerId, stream, isLocal = false) {
     
     const videoEl = container.querySelector('video');
     videoEl.srcObject = stream;
-}
-
-function removeVideoElement(peerId) {
-    document.getElementById(`container-${peerId}`)?.remove();
+    console.log(`🖼️ Добавлено видео для ${peerId} (isLocal: ${isLocal})`);
 }
 
 // ---------- ПЕРЕТАСКИВАНИЕ ----------
@@ -222,9 +232,9 @@ function makeDraggable(element, handle) {
 
 // ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ ----------
 function createPeerConnection(peerId) {
+    // Если соединение с таким peerId уже есть, закрываем его и удаляем
     if (peerConnections[peerId]) {
-        // Если соединение уже существует, закрываем его и удаляем
-        console.warn(`⚠️ Соединение с ${peerId} уже существует, пересоздаём`);
+        console.warn(`⚠️ Соединение с ${peerId} уже существует, закрываем старое`);
         peerConnections[peerId].close();
         delete peerConnections[peerId];
     }
@@ -240,7 +250,6 @@ function createPeerConnection(peerId) {
 
     pc.onicecandidate = (e) => {
         if (e.candidate) {
-            console.log(`🧊 ICE candidate для ${peerId}`);
             window.socket.emit('send-ice-candidate', { toPeerId: peerId, candidate: e.candidate });
         }
     };
@@ -253,6 +262,9 @@ function createPeerConnection(peerId) {
 
     pc.oniceconnectionstatechange = () => {
         console.log(`🔄 ICE state с ${peerId}: ${pc.iceConnectionState}`);
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            removeVideoElement(peerId);
+        }
     };
 
     pc.onsignalingstatechange = () => {
@@ -323,10 +335,9 @@ function initWebRTC(socket, roomId, role) {
         }
         console.log(`👤 user-joined: ${peerId} (${remoteRole})`);
         
-        // Удаляем старый видео-элемент на случай, если он застрял
+        // Удаляем старый видео-элемент (на случай, если он застрял)
         removeVideoElement(peerId);
         
-        // Создаём новое соединение (старое закрывается внутри createPeerConnection)
         const pc = createPeerConnection(peerId);
 
         if (localStream) {
@@ -335,7 +346,7 @@ function initWebRTC(socket, roomId, role) {
 
         // Репетитор всегда инициатор
         if (role === 'tutor') {
-            // Небольшая задержка, чтобы соединение стабилизировалось
+            // Небольшая задержка для стабилизации
             setTimeout(async () => {
                 if (pc.signalingState === 'stable') {
                     await negotiate(peerId, pc);
@@ -401,7 +412,7 @@ function initWebRTC(socket, roomId, role) {
         const startVideo = () => {
             setTimeout(() => {
                 startVideoCall(true);
-            }, 2000); // увеличенная задержка для гарантии готовности
+            }, 1500);
         };
         if (socket.connected) {
             startVideo();

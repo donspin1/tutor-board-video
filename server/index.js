@@ -21,6 +21,9 @@ const rooms = new Map();
 
 io.on('connection', (socket) => {
     console.log('🔌 Подключен:', socket.id);
+    
+    // Храним видео-комнаты, в которых состоит сокет
+    socket.videoRooms = [];
 
     // ---------- ДОСКА ----------
     socket.on('join-room', (roomId, role) => {
@@ -113,15 +116,24 @@ io.on('connection', (socket) => {
 
     // ---------- ВИДЕО ----------
     socket.on('join-video-room', ({ roomId, peerId, role }) => {
-        if (!roomId || !peerId || !role) return; // защита
-        socket.join(`video-${roomId}`);
-        socket.to(`video-${roomId}`).emit('user-joined', { peerId, role });
+        if (!roomId || !peerId || !role) return;
+        const videoRoom = `video-${roomId}`;
+        socket.join(videoRoom);
+        // Сохраняем комнату для последующего удаления при дисконнекте
+        if (!socket.videoRooms.includes(videoRoom)) {
+            socket.videoRooms.push(videoRoom);
+        }
+        socket.to(videoRoom).emit('user-joined', { peerId, role });
+        console.log(`🎥 ${role} (${peerId}) присоединился к ${videoRoom}`);
     });
 
     socket.on('leave-video-room', ({ roomId, peerId }) => {
         if (!roomId || !peerId) return;
-        socket.leave(`video-${roomId}`);
-        socket.to(`video-${roomId}`).emit('user-left', peerId);
+        const videoRoom = `video-${roomId}`;
+        socket.leave(videoRoom);
+        socket.videoRooms = socket.videoRooms.filter(vr => vr !== videoRoom);
+        socket.to(videoRoom).emit('user-left', peerId);
+        console.log(`🚪 ${peerId} покинул ${videoRoom}`);
     });
 
     socket.on('send-offer', ({ toPeerId, offer }) => {
@@ -139,8 +151,15 @@ io.on('connection', (socket) => {
         io.to(toPeerId).emit('receive-ice-candidate', { from: socket.id, candidate });
     });
 
+    // ---------- ОТКЛЮЧЕНИЕ ----------
     socket.on('disconnect', () => {
         console.log('❌ Отключен:', socket.id);
+        // Рассылаем user-left во все видео-комнаты, где был сокет
+        socket.videoRooms.forEach(videoRoom => {
+            socket.to(videoRoom).emit('user-left', socket.id);
+            console.log(`📢 user-left для ${socket.id} в ${videoRoom}`);
+        });
+        socket.videoRooms = [];
     });
 });
 
