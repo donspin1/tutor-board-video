@@ -1,5 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ СТАБИЛЬНАЯ ВЕРСИЯ (без дублей, аудио сразу, видео по кнопке)
-
+// webrtc.js — ПОЛНАЯ ВЕРСИЯ
 let localStream = null;
 let peerConnections = {};
 let isCameraActive = false;
@@ -14,55 +13,48 @@ async function initWebRTC(socket, roomId, role) {
 
     console.log(`📹 WebRTC запуск: ${role}`);
 
-    // Шаг 1: Сразу получаем микрофон (аудио-поток)
     try {
+        // Шаг 1: Получаем микрофон
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        // Показываем видео-сетку и добавляем своё превью (чёрный квадрат)
-        document.getElementById('video-panel').style.display = 'flex';
-        addVideoElement(socket.id, localStream, true);
-        updateMicUI(true); // Микрофон активен
+        
+        // Показываем сетку
+        const panel = document.getElementById('video-panel');
+        if (panel) panel.style.display = 'flex';
+        
+        // Отрисовываем себя под ID 'local'. Это исключает дубликаты "себя".
+        addVideoElement('local', localStream, true);
+        
+        updateMicUI(true); 
     } catch (err) {
-        console.error('❌ Ошибка при получении микрофона:', err);
-        alert('Не удалось получить доступ к микрофону. Проверьте разрешения.');
+        console.error('Ошибка при получении микрофона:', err);
     }
 
-    // Шаг 2: Входим в видео-комнату
+    // Шаг 2: Входим в комнату
     socket.emit('join-video-room', { roomId, peerId: socket.id, role });
 
-    // --- СОБЫТИЯ СОКЕТА ---
+    // --- ОБРАБОТЧИКИ СОБЫТИЙ СОКЕТА ---
     socket.on('user-joined', ({ peerId }) => {
         if (peerId === socket.id) return;
+        console.log("👤 Новый участник:", peerId);
         createPeerConnection(peerId);
     });
 
     socket.on('receive-offer', async ({ from, offer }) => {
         const pc = createPeerConnection(from);
-        try {
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('send-answer', { toPeerId: from, answer });
-        } catch (e) {
-            console.error('❌ Ошибка receive-offer:', e);
-        }
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('send-answer', { toPeerId: from, answer });
     });
 
     socket.on('receive-answer', async ({ from, answer }) => {
         const pc = peerConnections[from];
-        if (pc) {
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            } catch (e) {
-                console.error('❌ Ошибка receive-answer:', e);
-            }
-        }
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
     });
 
     socket.on('receive-ice-candidate', ({ from, candidate }) => {
         const pc = peerConnections[from];
-        if (pc) {
-            pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-        }
+        if (pc) pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
     });
 
     socket.on('user-left', (peerId) => {
@@ -73,11 +65,10 @@ async function initWebRTC(socket, roomId, role) {
         }
     });
 
-    // Привязываем кнопки управления
-    setupButtons();
+    setupButtons(); 
 }
 
-// ---------- 2. СОЗДАНИЕ PEER-СОЕДИНЕНИЯ ----------
+// ---------- 2. СОЗДАНИЕ PEER CONNECTION ----------
 function createPeerConnection(peerId) {
     if (peerConnections[peerId]) return peerConnections[peerId];
 
@@ -86,13 +77,12 @@ function createPeerConnection(peerId) {
     });
     peerConnections[peerId] = pc;
 
-    // Добавляем локальные аудио-треки (микрофон) сразу при создании PC
     if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
 
-    // Получение видео/аудио от удалённого участника
     pc.ontrack = (e) => {
+        console.log("🎯 Получен поток от партнера:", peerId);
         addVideoElement(peerId, e.streams[0], false);
     };
 
@@ -102,82 +92,50 @@ function createPeerConnection(peerId) {
         }
     };
 
-    // Автоматические переговоры при изменении состояния (например, включение камеры)
     pc.onnegotiationneeded = async () => {
         try {
             if (pc.signalingState !== 'stable') return;
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             window.socket.emit('send-offer', { toPeerId: peerId, offer });
-        } catch (err) { 
-            console.error('❌ onnegotiationneeded:', err); 
-        }
+        } catch (err) { console.error(err); }
     };
 
     return pc;
 }
 
-// ---------- 3. УПРАВЛЕНИЕ КАМЕРОЙ ----------
+// ---------- 3. УПРАВЛЕНИЕ КАМЕРОЙ И МИКРОФОНОМ ----------
 async function toggleCamera() {
     try {
         if (!isCameraActive) {
-            // Включаем камеру
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             const videoTrack = stream.getVideoTracks()[0];
-
+            
             if (localStream) {
-                // Удаляем старые видеотреки (если были)
-                localStream.getVideoTracks().forEach(t => {
-                    t.stop();
-                    localStream.removeTrack(t);
-                });
-                // Добавляем новый видеотрек
+                localStream.getVideoTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
                 localStream.addTrack(videoTrack);
-            } else {
-                // Если localStream почему-то нет (микрофон не включился), создаём новый поток
-                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-                // Обновляем иконку микрофона
-                updateMicUI(true);
             }
 
-            // Обновляем видео-превью (удаляем старый контейнер и создаём новый с видео)
-            addVideoElement(window.socket.id, localStream, true);
-
-            // Заменяем/добавляем видеотрек во все peer-соединения
             for (let pc of Object.values(peerConnections)) {
                 const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                if (sender) {
-                    sender.replaceTrack(videoTrack);
-                } else {
-                    pc.addTrack(videoTrack, localStream);
-                }
+                if (sender) sender.replaceTrack(videoTrack);
+                else pc.addTrack(videoTrack, localStream);
             }
             isCameraActive = true;
         } else {
-            // Выключаем камеру
-            if (localStream) {
-                localStream.getVideoTracks().forEach(t => {
-                    t.stop();
-                    localStream.removeTrack(t);
-                });
-                // Обновляем превью (теперь без видео, только аудио)
-                addVideoElement(window.socket.id, localStream, true);
-                // Удаляем видеотрек из всех peer-соединений (заменяем на null)
-                for (let pc of Object.values(peerConnections)) {
-                    const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                    if (sender) sender.replaceTrack(null);
-                }
+            localStream.getVideoTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
+            for (let pc of Object.values(peerConnections)) {
+                const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+                if (sender) sender.replaceTrack(null);
             }
             isCameraActive = false;
         }
         updateCamUI(isCameraActive);
-    } catch (err) { 
-        console.error('❌ Ошибка переключения камеры:', err);
-        alert('Не удалось запустить камеру'); 
-    }
+        // Важно: обновляем именно 'local'
+        addVideoElement('local', localStream, true);
+    } catch (err) { alert("Не удалось запустить камеру"); }
 }
 
-// ---------- 4. УПРАВЛЕНИЕ МИКРОФОНОМ ----------
 function toggleMic() {
     if (!localStream) return;
     const audioTrack = localStream.getAudioTracks()[0];
@@ -187,88 +145,86 @@ function toggleMic() {
     }
 }
 
-// ---------- 5. ОТРИСОВКА ВИДЕО (БЕЗ ДУБЛИКАТОВ) ----------
+// ---------- 4. ОТРИСОВКА ВИДЕО (ЗАЩИТА ОТ ДУБЛЕЙ) ----------
 function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
 
-    // 🔥 УДАЛЯЕМ ВСЕ СУЩЕСТВУЮЩИЕ КОНТЕЙНЕРЫ С ЭТИМ peerId (гарантия отсутствия дублей)
-    const existing = document.querySelectorAll(`#container-${peerId}`);
-    existing.forEach(el => el.remove());
+    // Если это НЕ локальный вызов, но пришел ID нашего же сокета — игнорируем, 
+    // так как мы уже отрисованы под ID 'local'
+    if (!isLocal && peerId === window.socket.id) return;
 
-    const container = document.createElement('div');
-    container.className = 'video-container';
-    container.id = `container-${peerId}`;
+    let container = document.getElementById(`container-${peerId}`);
+    
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'video-container';
+        container.id = `container-${peerId}`;
 
-    const video = document.createElement('video');
-    video.autoplay = true;
-    video.playsInline = true;
-    if (isLocal) video.muted = true;
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        if (isLocal) video.muted = true; // Себя не слушаем
 
-    const label = document.createElement('span');
-    label.className = 'video-label';
-    label.textContent = isLocal ? 'Вы' : (window.role === 'tutor' ? 'Ученик' : 'Репетитор');
+        const label = document.createElement('span');
+        label.className = 'video-label';
+        label.textContent = isLocal ? 'Вы' : (window.role === 'tutor' ? 'Ученик' : 'Репетитор');
 
-    container.appendChild(video);
-    container.appendChild(label);
-    grid.appendChild(container);
+        container.appendChild(video);
+        container.appendChild(label);
+        grid.appendChild(container);
+    }
 
     const videoEl = container.querySelector('video');
-    videoEl.srcObject = stream;
+    if (videoEl && videoEl.srcObject !== stream) {
+        videoEl.srcObject = stream;
+    }
 }
 
 function removeVideoElement(peerId) {
-    const el = document.getElementById(`container-${peerId}`);
-    if (el) el.remove();
+    document.getElementById(`container-${peerId}`)?.remove();
 }
 
-// ---------- 6. ПРИВЯЗКА КНОПОК ----------
+// ---------- 5. КНОПКИ УПРАВЛЕНИЯ ----------
 function setupButtons() {
-    // Микрофон (общий)
     const micBtn = document.getElementById('call-mic');
     if (micBtn) micBtn.onclick = toggleMic;
 
-    // Камера (общий)
     const camBtn = document.getElementById('call-cam');
     if (camBtn) camBtn.onclick = toggleCamera;
 
-    // Завершение звонка (разные ID у ученика и репетитора)
     const endBtnTutor = document.getElementById('call-end');
     const endBtnStudent = document.getElementById('exit-btn');
+    
     const leaveRoom = () => { window.location.href = '/'; };
+    
     if (endBtnTutor) endBtnTutor.onclick = leaveRoom;
     if (endBtnStudent) endBtnStudent.onclick = leaveRoom;
 
-    // Демонстрация экрана (только репетитор)
+    // Демонстрация экрана (Screen Sharing)
     const screenBtn = document.getElementById('call-screen');
-    if (screenBtn && window.role === 'tutor') {
+    if (screenBtn) {
         screenBtn.onclick = async () => {
             try {
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                 const screenTrack = screenStream.getVideoTracks()[0];
-                // Заменяем видеотрек во всех PC
+                
                 for (let pc of Object.values(peerConnections)) {
                     const sender = pc.getSenders().find(s => s.track?.kind === 'video');
                     if (sender) sender.replaceTrack(screenTrack);
+                    else pc.addTrack(screenTrack, localStream);
                 }
+                
+                // Когда пользователь нажмет "Прекратить доступ" в браузере
                 screenTrack.onended = () => {
-                    // При завершении демонстрации возвращаем камеру (если она была включена)
-                    if (isCameraActive) {
-                        const camTrack = localStream?.getVideoTracks()[0];
-                        if (camTrack) {
-                            for (let pc of Object.values(peerConnections)) {
-                                const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                                if (sender) sender.replaceTrack(camTrack);
-                            }
-                        }
-                    }
+                    isCameraActive = false;
+                    toggleCamera(); // Возвращаемся к камере
                 };
-            } catch (e) { console.error('❌ Демонстрация экрана:', e); }
+            } catch (e) { console.error("Ошибка шаринга экрана:", e); }
         };
     }
 }
 
-// ---------- 7. ОБНОВЛЕНИЕ ИКОНОК ----------
 function updateMicUI(enabled) {
     const btn = document.getElementById('call-mic');
     if (!btn) return;
