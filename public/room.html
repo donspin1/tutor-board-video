@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Room</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="top-bar">
+  <div id="roomName"></div>
+</div>
+
+<div class="main">
+
+  <div class="video-panel">
+    <video id="localVideo" autoplay muted playsinline></video>
+    <div id="videos"></div>
+  </div>
+
+  <div class="board-panel">
+    <canvas id="board"></canvas>
+  </div>
+
+</div>
+
+<div class="controls">
+  <button id="clearBtn">Clear</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/room.js"></script>
+
+</body>
+</html>

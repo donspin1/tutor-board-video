@@ -1,20 +1,43 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Join Room</title>
+<meta charset="UTF-8">
+<title>Create Room</title>
+<style>
+body{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  font-family:sans-serif;
+}
+.container{
+  text-align:center;
+}
+input{
+  padding:10px;
+  width:200px;
+}
+button{
+  padding:10px 20px;
+}
+</style>
 </head>
 <body>
-    <h2>Enter Room ID</h2>
-    <input id="roomInput" placeholder="room123" />
-    <button onclick="join('student')">Join as Student</button>
-    <button onclick="join('tutor')">Join as Tutor</button>
+
+<div class="container">
+  <h2>Create / Join Room</h2>
+  <input id="room" placeholder="room name">
+  <br><br>
+  <button onclick="go()">Enter</button>
+</div>
 
 <script>
-function join(role){
-    const room = document.getElementById("roomInput").value;
-    if(!room) return;
-    window.location.href = `/${role}.html?room=${room}`;
+function go(){
+  const r = document.getElementById("room").value;
+  if(r) window.location.href = "/room/" + r;
 }
 </script>
+
 </body>
 </html>
