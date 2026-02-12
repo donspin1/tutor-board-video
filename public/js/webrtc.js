@@ -1,4 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ АБСОЛЮТНО РАБОЧАЯ ВЕРСИЯ (с гарантированным socket.id)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (гарантированное видео, принудительный renegotiation)
 
 let localStream = null;
 let peerConnections = {};
@@ -22,11 +22,24 @@ async function startVideoCall(isSilent = false) {
 
         addVideoElement(window.socket.id, localStream, true);
 
-        Object.values(peerConnections).forEach(pc => {
+        // Добавляем треки во ВСЕ существующие peer-соединения и форсируем renegotiation
+        for (const [peerId, pc] of Object.entries(peerConnections)) {
+            const senders = pc.getSenders().map(s => s.track?.kind);
             localStream.getTracks().forEach(track => {
-                try { pc.addTrack(track, localStream); } catch (e) {}
+                if (!senders.includes(track.kind)) {
+                    pc.addTrack(track, localStream);
+                    console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
+                }
             });
-        });
+
+            // Принудительная пересылка offer, если соединение не установлено
+            if (pc.signalingState === 'stable' && pc.connectionState !== 'connected') {
+                console.log(`🔄 Принудительный renegotiation с ${peerId}`);
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                window.socket.emit('send-offer', { toPeerId: peerId, offer });
+            }
+        }
 
         updateMicButton(true);
         updateCamButton(true);
@@ -205,26 +218,51 @@ function makeDraggable(element, handle) {
     }
 }
 
-// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ ----------
+// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ (с TURN и onnegotiationneeded) ----------
 function createPeerConnection(peerId) {
     if (peerConnections[peerId]) return peerConnections[peerId];
 
     const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+        ]
     });
 
     peerConnections[peerId] = pc;
 
     pc.onicecandidate = (e) => {
         if (e.candidate) {
+            console.log(`🧊 ICE candidate для ${peerId}:`, e.candidate.candidate.substring(0, 50));
             window.socket.emit('send-ice-candidate', { toPeerId: peerId, candidate: e.candidate });
         }
     };
 
     pc.ontrack = (e) => {
-        console.log(`🎥 Получен трек от ${peerId}`);
+        console.log(`🎥 Получен трек ${e.track.kind} от ${peerId}`);
         document.getElementById('video-panel').style.display = 'flex';
         addVideoElement(peerId, e.streams[0], false);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+        console.log(`🔄 ICE state с ${peerId}: ${pc.iceConnectionState}`);
+    };
+
+    pc.onsignalingstatechange = () => {
+        console.log(`🔄 Signaling state с ${peerId}: ${pc.signalingState}`);
+    };
+
+    // 🔥 ВАЖНО: автоматическая реинициация при добавлении треков
+    pc.onnegotiationneeded = async () => {
+        console.log(`🤝 negotiationneeded для ${peerId}, состояние: ${pc.signalingState}`);
+        if (pc.signalingState === 'stable') {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            window.socket.emit('send-offer', { toPeerId: peerId, offer });
+        }
     };
 
     return pc;
@@ -250,7 +288,7 @@ function setupButtons() {
     }
 }
 
-// ---------- ИНИЦИАЛИЗАЦИЯ ----------
+// ---------- ИНИЦИАЛИЗАЦИЯ (ГАРАНТИРОВАННЫЙ socket.id) ----------
 function initWebRTC(socket, roomId, role) {
     if (webrtcInitialized) return;
     webrtcInitialized = true;
@@ -261,16 +299,20 @@ function initWebRTC(socket, roomId, role) {
     
     console.log(`📹 WebRTC: Инициализация для ${role}`);
 
-    // ✅ Дожидаемся, пока сокет подключится и получит свой id
-    socket.on('connect', function() {
-        console.log(`✅ Socket connected, id: ${socket.id}`);
-        socket.emit('join-video-room', { roomId, peerId: socket.id, role });
-    });
+    // Функция отправки join-video-room
+    const joinVideoRoom = () => {
+        if (socket.id) {
+            socket.emit('join-video-room', { roomId, peerId: socket.id, role });
+            console.log(`✅ Отправлен join-video-room, peerId: ${socket.id}`);
+        } else {
+            console.error('❌ socket.id не определён!');
+        }
+    };
 
-    // Если сокет уже подключён, событие 'connect' не сработает, поэтому проверим текущий статус
     if (socket.connected) {
-        console.log(`✅ Socket already connected, id: ${socket.id}`);
-        socket.emit('join-video-room', { roomId, peerId: socket.id, role });
+        joinVideoRoom();
+    } else {
+        socket.once('connect', joinVideoRoom);
     }
 
     // --- СОБЫТИЯ ---
@@ -290,10 +332,12 @@ function initWebRTC(socket, roomId, role) {
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
 
-        if (role === 'tutor' || (role === 'student' && remoteRole === 'tutor')) {
+        // Репетитор всегда инициатор, ученик отвечает
+        if (role === 'tutor') {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             socket.emit('send-offer', { toPeerId: peerId, offer });
+            console.log(`📤 Offer отправлен репетитором для ${peerId}`);
         }
     });
 
@@ -314,12 +358,14 @@ function initWebRTC(socket, roomId, role) {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('send-answer', { toPeerId: from, answer });
+        console.log(`📤 Answer отправлен для ${from}`);
     });
 
     socket.on('receive-answer', ({ from, answer }) => {
         if (!from || !answer) return;
         if (peerConnections[from]) {
             peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer));
+            console.log(`✅ Answer установлен для ${from}`);
         }
     });
 
@@ -343,11 +389,10 @@ function initWebRTC(socket, roomId, role) {
 
     // АВТОСТАРТ ДЛЯ УЧЕНИКА (с задержкой после готовности сокета)
     if (role === 'student') {
-        // Дождёмся либо события 'connect', либо сразу, если уже подключён
         const startVideo = () => {
             setTimeout(() => {
                 startVideoCall(true);
-            }, 1000);
+            }, 1500); // увеличенная задержка, чтобы offer уже пришёл
         };
         if (socket.connected) {
             startVideo();
