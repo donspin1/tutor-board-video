@@ -21,8 +21,6 @@ const rooms = new Map();
 
 io.on('connection', (socket) => {
     console.log('🔌 Подключен:', socket.id);
-    
-    // Храним видео-комнаты, в которых состоит сокет
     socket.videoRooms = [];
 
     // ---------- ДОСКА ----------
@@ -119,7 +117,6 @@ io.on('connection', (socket) => {
         if (!roomId || !peerId || !role) return;
         const videoRoom = `video-${roomId}`;
         socket.join(videoRoom);
-        // Сохраняем комнату для последующего удаления при дисконнекте
         if (!socket.videoRooms.includes(videoRoom)) {
             socket.videoRooms.push(videoRoom);
         }
@@ -151,10 +148,15 @@ io.on('connection', (socket) => {
         io.to(toPeerId).emit('receive-ice-candidate', { from: socket.id, candidate });
     });
 
+    // 🔥 НОВОЕ: ученик просит репетитора пересоздать offer (после включения камеры)
+    socket.on('need-offer', ({ toPeerId }) => {
+        if (!toPeerId) return;
+        io.to(toPeerId).emit('need-offer', { from: socket.id });
+    });
+
     // ---------- ОТКЛЮЧЕНИЕ ----------
     socket.on('disconnect', () => {
         console.log('❌ Отключен:', socket.id);
-        // Рассылаем user-left во все видео-комнаты, где был сокет
         socket.videoRooms.forEach(videoRoom => {
             socket.to(videoRoom).emit('user-left', socket.id);
             console.log(`📢 user-left для ${socket.id} в ${videoRoom}`);
