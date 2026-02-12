@@ -1,4 +1,4 @@
-// tutor.js — СИНХРОНИЗАЦИЯ ЧЕРЕЗ JSON (ПРАВИЛЬНО)
+// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (отправка полного JSON с размерами)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -35,10 +35,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDrawingShape = false;
     let startX, startY, shape;
 
-    // ---------- ФУНКЦИЯ ОТПРАВКИ ПОЛНОГО JSON ----------
+    // ---------- ФУНКЦИЯ ОТПРАВКИ ПОЛНОГО JSON (С РАЗМЕРАМИ) ----------
     function sendCanvasState() {
-        const canvasJson = canvas.toJSON(['id']); // сохраняем id объектов
-        socket.emit('canvas-state', { roomId, canvasJson });
+        const json = canvas.toJSON(['id']);
+        json.width = canvas.getWidth();      // добавляем реальную ширину
+        json.height = canvas.getHeight();    // добавляем реальную высоту
+        json.background = canvas.backgroundColor || 'white';
+        socket.emit('canvas-state', { roomId, canvasJson: json });
     }
 
     // ---------- UI ----------
@@ -95,30 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('tool-pencil')?.classList.add('active');
 
-    // ---------- РИСОВАНИЕ ----------
-    canvas.on('mouse:up', () => {
-        if (shape) {
-            shape.set({ selectable: true, evented: true, id: 'obj-' + Date.now() });
-            shape = null;
-            sendCanvasState();
-        }
-        isDrawingShape = false;
-    });
-
-    canvas.on('path:created', (e) => {
-        e.path.set({ id: 'obj-' + Date.now() });
-        sendCanvasState();
-    });
-
-    canvas.on('object:modified', () => {
-        sendCanvasState();
-    });
-
-    canvas.on('object:removed', () => {
-        sendCanvasState();
-    });
-
-    // ---------- ФИГУРЫ ----------
+    // ---------- РИСОВАНИЕ ФИГУР ----------
     canvas.on('mouse:down', (opt) => {
         if (['line', 'rect', 'circle'].includes(currentTool)) {
             isDrawingShape = true;
@@ -153,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const target = canvas.findTarget(opt.e);
             if (target) {
                 canvas.remove(target);
+                sendCanvasState();
                 socket.emit('remove-object', { roomId, id: target.id });
             }
         }
@@ -176,6 +157,28 @@ document.addEventListener('DOMContentLoaded', () => {
             shape.set({ radius });
         }
         canvas.renderAll();
+    });
+
+    canvas.on('mouse:up', () => {
+        if (shape) {
+            shape.set({ selectable: true, evented: true, id: 'obj-' + Date.now() });
+            sendCanvasState(); // отправляем после добавления фигуры
+            shape = null;
+        }
+        isDrawingShape = false;
+    });
+
+    canvas.on('path:created', (e) => {
+        e.path.set({ id: 'obj-' + Date.now() });
+        sendCanvasState(); // отправляем после рисования
+    });
+
+    canvas.on('object:modified', () => {
+        sendCanvasState(); // перемещение, масштабирование и т.д.
+    });
+
+    canvas.on('object:removed', () => {
+        sendCanvasState(); // удаление
     });
 
     // ---------- ЗАГРУЗКА ИЗОБРАЖЕНИЙ ----------
@@ -270,8 +273,8 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('join-room', roomId, 'tutor');
 
     socket.on('init-canvas', (data) => {
-        if (data.objects) {
-            canvas.loadFromJSON(data, () => {
+        if (data.canvasJson) {
+            canvas.loadFromJSON(data.canvasJson, () => {
                 canvas.renderAll();
                 resizeCanvas();
             });
@@ -283,10 +286,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 lockBtn.innerHTML = isLocked ? '<i class="fas fa-lock"></i>' : '<i class="fas fa-unlock-alt"></i>';
             }
         }
-    });
-
-    socket.on('draw-to-client', (obj) => {
-        // Игнорируем, используем canvas-state
     });
 
     socket.on('remove-object', (id) => {

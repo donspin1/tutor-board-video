@@ -1,4 +1,4 @@
-// student.js — ПРИЁМ JSON И МАСШТАБИРОВАНИЕ (ПРАВИЛЬНО)
+// student.js — ПОЛНОЕ МАСШТАБИРОВАНИЕ И ЦЕНТРИРОВАНИЕ
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -18,39 +18,81 @@ document.addEventListener('DOMContentLoaded', () => {
         selection: false 
     });
 
-    // ---------- МАСШТАБИРОВАНИЕ КОНТЕНТА ПОД РАЗМЕР ХОЛСТА ----------
+    // ---------- ФУНКЦИЯ МАСШТАБИРОВАНИЯ И ЦЕНТРИРОВАНИЯ ----------
     function applyCanvasState(stateJson) {
-        // Сохраняем текущие размеры
-        const width = canvas.width;
-        const height = canvas.height;
-        
-        // Загружаем состояние
+        const width = canvas.getWidth();
+        const height = canvas.getHeight();
+
         canvas.loadFromJSON(stateJson, () => {
-            // Получаем оригинальные размеры холста из JSON
-            const originalWidth = stateJson.width || 1400; // запасное значение
-            const originalHeight = stateJson.height || 900;
-            
-            // Вычисляем коэффициенты масштабирования
+            const originalWidth = stateJson.width;
+            const originalHeight = stateJson.height;
+
+            if (!originalWidth || !originalHeight) {
+                console.warn('Нет оригинальных размеров, используем текущие');
+                canvas.renderAll();
+                return;
+            }
+
+            // Равномерное масштабирование (fit)
             const scaleX = width / originalWidth;
             const scaleY = height / originalHeight;
             const scale = Math.min(scaleX, scaleY); // сохраняем пропорции
-            
-            // Применяем масштаб ко всем объектам
+
+            // Масштабируем все объекты
             canvas.getObjects().forEach(obj => {
                 obj.scaleX = (obj.scaleX || 1) * scale;
                 obj.scaleY = (obj.scaleY || 1) * scale;
                 obj.left = (obj.left || 0) * scale;
                 obj.top = (obj.top || 0) * scale;
-                if (obj.width) obj.width = obj.width * scale;
-                if (obj.height) obj.height = obj.height * scale;
-                if (obj.radius) obj.radius = obj.radius * scale;
-                if (obj.x1) obj.x1 = obj.x1 * scale;
-                if (obj.x2) obj.x2 = obj.x2 * scale;
-                if (obj.y1) obj.y1 = obj.y1 * scale;
-                if (obj.y2) obj.y2 = obj.y2 * scale;
+                if (obj.width) obj.width *= scale;
+                if (obj.height) obj.height *= scale;
+                if (obj.radius) obj.radius *= scale;
+                if (obj.x1 !== undefined) { obj.x1 *= scale; obj.x2 *= scale; }
+                if (obj.y1 !== undefined) { obj.y1 *= scale; obj.y2 *= scale; }
+                
+                // Для рисованных линий (path)
+                if (obj.type === 'path' && obj.path) {
+                    obj.path.forEach(command => {
+                        if (Array.isArray(command) && command.length >= 3) {
+                            for (let i = 1; i < command.length; i += 2) {
+                                command[i] *= scale;       // x
+                                if (i + 1 < command.length) {
+                                    command[i + 1] *= scale; // y
+                                }
+                            }
+                        }
+                    });
+                }
                 obj.setCoords();
             });
-            
+
+            // Центрирование (letterbox)
+            const scaledWidth = originalWidth * scale;
+            const scaledHeight = originalHeight * scale;
+            const offsetX = (width - scaledWidth) / 2;
+            const offsetY = (height - scaledHeight) / 2;
+
+            canvas.getObjects().forEach(obj => {
+                if (obj.left !== undefined) obj.left += offsetX;
+                if (obj.top !== undefined) obj.top += offsetY;
+                if (obj.x1 !== undefined) { obj.x1 += offsetX; obj.x2 += offsetX; }
+                if (obj.y1 !== undefined) { obj.y1 += offsetY; obj.y2 += offsetY; }
+                
+                if (obj.type === 'path' && obj.path) {
+                    obj.path.forEach(command => {
+                        if (Array.isArray(command) && command.length >= 3) {
+                            for (let i = 1; i < command.length; i += 2) {
+                                command[i] += offsetX;
+                                if (i + 1 < command.length) {
+                                    command[i + 1] += offsetY;
+                                }
+                            }
+                        }
+                    });
+                }
+                obj.setCoords();
+            });
+
             canvas.renderAll();
         });
     }
@@ -120,7 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         e.path.set({ id: 'student-' + Date.now() });
-        // Отправляем отдельный объект (как раньше)
         const pathData = e.path.toObject(['id']);
         socket.emit('drawing-data', { roomId, object: pathData });
     });
@@ -169,18 +210,18 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('join-room', roomId, 'student');
 
     socket.on('init-canvas', (data) => {
-        if (data.objects) {
-            applyCanvasState(data);
+        if (data.canvasJson) {
+            applyCanvasState(data.canvasJson);
         }
         resizeCanvas();
     });
 
-    // ---------- ПОЛУЧЕНИЕ ПОЛНОГО СОСТОЯНИЯ CANVAS ----------
+    // ---------- ПОЛУЧЕНИЕ ПОЛНОГО СОСТОЯНИЯ ----------
     socket.on('canvas-state', ({ canvasJson }) => {
         applyCanvasState(canvasJson);
     });
 
-    // ---------- ОТДЕЛЬНЫЕ ОБЪЕКТЫ (ОТ УЧЕНИКА) ----------
+    // ---------- ПОЛУЧЕНИЕ ОТДЕЛЬНЫХ ОБЪЕКТОВ (от учеников) ----------
     socket.on('draw-to-client', (obj) => {
         fabric.util.enlivenObjects([obj], (objects) => {
             const objToAdd = objects[0];
