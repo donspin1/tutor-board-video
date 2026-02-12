@@ -17,22 +17,37 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-const rooms = new Map(); // roomId → { canvasJson, locked }
+const rooms = new Map();
 
 io.on('connection', (socket) => {
     console.log('🔌 Подключен:', socket.id);
 
+    // ---------- ДОСКА ----------
     socket.on('join-room', (roomId, role) => {
         console.log(`📥 ${role} вход в ${roomId}`);
 
         if (role === 'tutor') {
             if (!rooms.has(roomId)) {
-                rooms.set(roomId, { canvasJson: { objects: [], width: 1400, height: 900, background: 'white' }, locked: false });
+                rooms.set(roomId, { 
+                    objects: [], 
+                    locked: false, 
+                    background: 'white',
+                    width: null,
+                    height: null 
+                });
                 console.log(`🆕 Комната ${roomId} создана`);
             }
             socket.join(roomId);
             const room = rooms.get(roomId);
-            socket.emit('init-canvas', { canvasJson: room.canvasJson, locked: room.locked });
+            socket.emit('init-canvas', {
+                canvasJson: {
+                    objects: room.objects || [],
+                    width: room.width,
+                    height: room.height,
+                    background: room.background || 'white'
+                },
+                locked: room.locked
+            });
         } else if (role === 'student') {
             if (!rooms.has(roomId)) {
                 socket.emit('room-not-found', roomId);
@@ -40,34 +55,45 @@ io.on('connection', (socket) => {
             }
             socket.join(roomId);
             const room = rooms.get(roomId);
-            socket.emit('init-canvas', { canvasJson: room.canvasJson, locked: room.locked });
+            socket.emit('init-canvas', {
+                canvasJson: {
+                    objects: room.objects || [],
+                    width: room.width,
+                    height: room.height,
+                    background: room.background || 'white'
+                },
+                locked: room.locked
+            });
         }
     });
 
-    // Полное состояние от репетитора
+    // Полное состояние canvas от репетитора (с размерами)
     socket.on('canvas-state', ({ roomId, canvasJson }) => {
         const room = rooms.get(roomId);
         if (room) {
-            room.canvasJson = canvasJson;
+            room.objects = canvasJson.objects || [];
+            room.width = canvasJson.width;
+            room.height = canvasJson.height;
+            room.background = canvasJson.background || 'white';
             socket.to(roomId).emit('canvas-state', { canvasJson });
         }
     });
 
-    // Отдельные объекты от ученика
+    // Рисование учеников (отдельные объекты)
     socket.on('drawing-data', ({ roomId, object }) => {
         const room = rooms.get(roomId);
-        if (room && room.canvasJson) {
-            const index = room.canvasJson.objects.findIndex(o => o.id === object.id);
-            if (index !== -1) room.canvasJson.objects[index] = object;
-            else room.canvasJson.objects.push(object);
+        if (room) {
+            const index = room.objects.findIndex(o => o.id === object.id);
+            if (index !== -1) room.objects[index] = object;
+            else room.objects.push(object);
             socket.to(roomId).emit('draw-to-client', object);
         }
     });
 
     socket.on('remove-object', ({ roomId, id }) => {
         const room = rooms.get(roomId);
-        if (room && room.canvasJson) {
-            room.canvasJson.objects = room.canvasJson.objects.filter(o => o.id !== id);
+        if (room) {
+            room.objects = room.objects.filter(o => o.id !== id);
             socket.to(roomId).emit('remove-object', id);
         }
     });
@@ -75,7 +101,10 @@ io.on('connection', (socket) => {
     socket.on('clear-room', (roomId) => {
         const room = rooms.get(roomId);
         if (room) {
-            room.canvasJson = { objects: [], width: room.canvasJson.width || 1400, height: room.canvasJson.height || 900, background: 'white' };
+            room.objects = [];
+            room.background = 'white';
+            room.width = null;
+            room.height = null;
             io.to(roomId).emit('clear-canvas');
         }
     });
