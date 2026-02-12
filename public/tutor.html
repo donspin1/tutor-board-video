@@ -13,6 +13,7 @@
 </head>
 <body>
     <div class="board-container">
+        <!-- Боковая панель (только для доски) -->
         <div class="sidebar">
             <div class="tool-btn active" id="tool-pencil" title="Карандаш">
                 <i class="fas fa-pencil-alt"></i>
@@ -41,15 +42,11 @@
             <div class="tool-btn" id="tool-save" title="Сохранить">
                 <i class="fas fa-download"></i>
             </div>
-            <div class="tool-btn" id="tool-video" title="Видеозвонок">
-                <i class="fas fa-video"></i>
-            </div>
-            <div class="tool-btn" id="tool-exit" title="Выйти">
-                <i class="fas fa-sign-out-alt"></i>
-            </div>
         </div>
 
+        <!-- Основная область -->
         <div class="main-area">
+            <!-- Верхняя панель (ID, имя, доступ + элементы управления звонком) -->
             <div class="top-bar">
                 <div class="room-info">
                     <span class="room-id" id="room-id">ID: ...</span>
@@ -61,21 +58,33 @@
                     </button>
                     <span id="username-display"></span>
                 </div>
-                <button id="lock-btn" class="lock-btn" style="background: var(--success);">
-                    <i class="fas fa-unlock-alt"></i>
-                </button>
+                
+                <div class="call-controls">
+                    <!-- Кнопка микрофона -->
+                    <button id="call-mic" class="call-btn active" title="Микрофон">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    <!-- Кнопка камеры -->
+                    <button id="call-cam" class="call-btn" title="Камера">
+                        <i class="fas fa-video"></i>
+                    </button>
+                    <!-- Кнопка демонстрации экрана (только репетитор) -->
+                    <button id="call-screen" class="call-btn" title="Экран">
+                        <i class="fas fa-desktop"></i>
+                    </button>
+                    <!-- Кнопка блокировки доступа -->
+                    <button id="lock-btn" class="call-btn lock-btn" style="background: var(--success);">
+                        <i class="fas fa-unlock-alt"></i>
+                    </button>
+                    <!-- Кнопка выхода (завершение звонка) -->
+                    <button id="call-end" class="call-btn danger" title="Покинуть комнату">
+                        <i class="fas fa-phone-slash"></i>
+                    </button>
+                </div>
             </div>
 
-            <!-- ВИДЕО-ПАНЕЛЬ – БЕЗ ЗАГОЛОВКА, ТОЛЬКО КНОПКИ -->
-            <div class="video-panel" id="video-panel" style="display: none;">
-                <div class="video-header">
-                    <div class="video-controls">
-                        <button class="video-btn" id="toggle-mic" title="Микрофон"><i class="fas fa-microphone"></i></button>
-                        <button class="video-btn" id="toggle-cam" title="Камера"><i class="fas fa-video"></i></button>
-                        <button class="video-btn" id="toggle-screen" title="Экран"><i class="fas fa-desktop"></i></button>
-                        <button class="video-btn danger" id="end-call" title="Завершить"><i class="fas fa-phone-slash"></i></button>
-                    </div>
-                </div>
+            <!-- ВИДЕО-ПАНЕЛЬ (только сетка видео, без заголовка и кнопок) -->
+            <div class="video-panel" id="video-panel">
                 <div class="video-grid" id="video-grid"></div>
             </div>
 

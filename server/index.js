@@ -17,7 +17,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-const rooms = new Map(); // roomId -> { participants: Map<socketId, role>, objects, locked, width, height }
+const rooms = new Map(); // roomId -> { participants: Map, objects, locked, width, height }
 
 io.on('connection', (socket) => {
     console.log('🔌 Подключен:', socket.id);
@@ -26,7 +26,6 @@ io.on('connection', (socket) => {
     socket.on('join-room', (roomId, role) => {
         console.log(`📥 ${role} вход в ${roomId}`);
         
-        // Инициализация комнаты
         if (!rooms.has(roomId)) {
             rooms.set(roomId, {
                 participants: new Map(),
@@ -50,6 +49,7 @@ io.on('connection', (socket) => {
             .map(([id, data]) => ({ peerId: id, role: data.role }));
         
         socket.emit('room-participants', participants);
+        console.log(`📋 Отправлен список участников (${participants.length} чел.)`);
         
         // 2. Оповещаем остальных, что новый участник присоединился
         socket.to(roomId).emit('user-joined', { peerId: socket.id, role });
@@ -117,13 +117,11 @@ io.on('connection', (socket) => {
     socket.on('send-offer', ({ toPeerId, offer }) => {
         if (!toPeerId || !offer) return;
         io.to(toPeerId).emit('receive-offer', { from: socket.id, offer });
-        console.log(`📤 offer от ${socket.id} -> ${toPeerId}`);
     });
 
     socket.on('send-answer', ({ toPeerId, answer }) => {
         if (!toPeerId || !answer) return;
         io.to(toPeerId).emit('receive-answer', { from: socket.id, answer });
-        console.log(`📤 answer от ${socket.id} -> ${toPeerId}`);
     });
 
     socket.on('send-ice-candidate', ({ toPeerId, candidate }) => {
