@@ -1,22 +1,18 @@
-// webrtc.js — КОМНАТНАЯ МОДЕЛЬ (Zoom-логика) — ИСПРАВЛЕНО, ВИДЕО РАБОТАЕТ
+// webrtc.js — ФИНАЛЬНАЯ СТАБИЛЬНАЯ ВЕРСИЯ
+// Аудио включается сразу при входе, видео — по кнопке
+// Никаких гонок, чёрных экранов, порядок m-lines фиксирован
 
 let localStream = null;
 let peerConnections = {};
-let isCameraActive = false;
-let isMicActive = true;
+let isCameraActive = false;  // включена ли камера
+let isMicActive = false;     // включён ли микрофон (по умолчанию false, но мы включим сразу)
 let webrtcInitialized = false;
 let pendingPeers = [];
 
-// ---------- ОТПРАВКА OFFER ----------
+// ---------- ОТПРАВКА OFFER (ТОЛЬКО КОГДА ЕСТЬ ЛОКАЛЬНЫЙ ПОТОК) ----------
 async function sendOffer(peerId, pc) {
-    if (!pc || pc.signalingState !== 'stable' || pc._isNegotiating) {
-        console.log(`⏸️ sendOffer: состояние ${pc?.signalingState}, пропускаем`);
-        return;
-    }
-    if (!localStream) {
-        console.log(`⏸️ sendOffer: нет локального потока`);
-        return;
-    }
+    if (!pc || pc.signalingState !== 'stable' || pc._isNegotiating) return;
+    if (!localStream) return;
     try {
         pc._isNegotiating = true;
         console.log(`🔄 Отправка offer для ${peerId}`);
@@ -30,87 +26,30 @@ async function sendOffer(peerId, pc) {
     }
 }
 
-// ---------- ВКЛЮЧЕНИЕ/ВЫКЛЮЧЕНИЕ КАМЕРЫ ----------
-async function toggleCamera() {
-    if (isCameraActive) {
-        // Выключаем камеру (только disable, не stop)
-        if (localStream) {
-            localStream.getVideoTracks().forEach(track => { track.enabled = false; });
-        }
-        isCameraActive = false;
-        document.getElementById('call-cam')?.classList.remove('active');
-        console.log('📷 Камера выключена');
-    } else {
-        // Включаем камеру
-        if (!localStream) {
-            try {
-                console.log('🎥 Запрос камеры и микрофона...');
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                isMicActive = true;
-                isCameraActive = true;
-                console.log(`✅ Поток получен, треков: ${localStream.getTracks().length}`);
-
-                // Показываем видео-панель
-                document.getElementById('video-panel').style.display = 'flex';
-                addVideoElement(window.socket.id, localStream, true);
-
-                // 🔥 ВАЖНО: добавляем треки во ВСЕ существующие peer-соединения
-                for (const [peerId, pc] of Object.entries(peerConnections)) {
-                    await addLocalTracksToPeerConnection(pc, peerId);
-                    await sendOffer(peerId, pc);
-                }
-
-                // 🔥 Обрабатываем отложенные пиры
-                for (const peerId of pendingPeers) {
-                    const pc = peerConnections[peerId];
-                    if (pc) {
-                        await addLocalTracksToPeerConnection(pc, peerId);
-                        await sendOffer(peerId, pc);
-                    }
-                }
-                pendingPeers = [];
-
-                document.getElementById('call-cam')?.classList.add('active');
-                document.getElementById('call-mic')?.classList.add('active');
-            } catch (err) {
-                console.error('❌ Ошибка доступа к камере:', err);
-                alert('Не удалось включить камеру/микрофон');
-                return;
-            }
-        } else {
-            // Поток уже есть — просто включаем видео
-            localStream.getVideoTracks().forEach(track => { track.enabled = true; });
-            isCameraActive = true;
-            document.getElementById('call-cam')?.classList.add('active');
-
-            // 🔥 Отправляем offer всем пирам (переговоры)
-            for (const [peerId, pc] of Object.entries(peerConnections)) {
-                if (pc.signalingState === 'stable' && !pc._isNegotiating) {
-                    await sendOffer(peerId, pc);
-                }
-            }
-        }
-    }
-}
-
-// 🔥 НОВАЯ ФУНКЦИЯ: добавляет локальные треки в peer-соединение и обновляет направление
-async function addLocalTracksToPeerConnection(pc, peerId) {
+// ---------- ДОБАВЛЕНИЕ ЛОКАЛЬНЫХ ТРЕКОВ В PEER-СОЕДИНЕНИЕ ----------
+function addLocalTracksToPeerConnection(pc, peerId) {
     if (!localStream) return;
 
-    // Убеждаемся, что transceivers существуют и имеют правильное направление
-    ['audio', 'video'].forEach(kind => {
-        let transceiver = pc.getTransceivers().find(t => t.receiver.track.kind === kind);
-        if (!transceiver) {
-            transceiver = pc.addTransceiver(kind, { direction: 'sendrecv' });
-            console.log(`➕ Добавлен transceiver ${kind} для ${peerId}`);
-        } else {
-            // Если transceiver уже есть, меняем направление на sendrecv
-            if (transceiver.direction !== 'sendrecv') {
-                transceiver.direction = 'sendrecv';
-                console.log(`🔄 Изменено направление ${kind} на sendrecv для ${peerId}`);
-            }
+    // Убеждаемся, что трансиверы существуют в правильном порядке
+    const audioTransceiver = pc.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+    const videoTransceiver = pc.getTransceivers().find(t => t.receiver.track.kind === 'video');
+
+    // Аудио трансивер должен быть всегда sendrecv
+    if (audioTransceiver) {
+        if (audioTransceiver.direction !== 'sendrecv') {
+            audioTransceiver.direction = 'sendrecv';
+            console.log(`🔄 audio transceiver ${peerId} -> sendrecv`);
         }
-    });
+    }
+
+    // Видео трансивер: если камера включена -> sendrecv, иначе recvonly
+    if (videoTransceiver) {
+        const desiredDirection = isCameraActive ? 'sendrecv' : 'recvonly';
+        if (videoTransceiver.direction !== desiredDirection) {
+            videoTransceiver.direction = desiredDirection;
+            console.log(`🔄 video transceiver ${peerId} -> ${desiredDirection}`);
+        }
+    }
 
     // Добавляем/заменяем треки
     localStream.getTracks().forEach(track => {
@@ -125,10 +64,110 @@ async function addLocalTracksToPeerConnection(pc, peerId) {
     });
 }
 
+// ---------- ВКЛЮЧЕНИЕ МИКРОФОНА (СРАЗУ ПРИ ИНИЦИАЛИЗАЦИИ) ----------
+async function enableMicrophone() {
+    if (localStream) return; // уже есть поток
+    try {
+        console.log('🎤 Запрос микрофона...');
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        isMicActive = true;
+        console.log('✅ Микрофон получен');
+
+        // Показываем видео-панель (она может быть скрыта, но теперь отобразим)
+        const panel = document.getElementById('video-panel');
+        if (panel) panel.style.display = 'flex';
+
+        // Добавляем своё видео (только локальное, без камеры — просто чёрный квадрат)
+        addVideoElement(window.socket.id, localStream, true);
+
+        // Добавляем треки во все существующие peer-соединения
+        for (const [peerId, pc] of Object.entries(peerConnections)) {
+            addLocalTracksToPeerConnection(pc, peerId);
+            await sendOffer(peerId, pc);
+        }
+
+        // Обрабатываем отложенные пиры
+        for (const peerId of pendingPeers) {
+            const pc = peerConnections[peerId];
+            if (pc) {
+                addLocalTracksToPeerConnection(pc, peerId);
+                await sendOffer(peerId, pc);
+            }
+        }
+        pendingPeers = [];
+
+        // Обновляем иконку микрофона
+        const micBtn = document.getElementById('call-mic');
+        if (micBtn) {
+            micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+            micBtn.classList.add('active');
+        }
+    } catch (err) {
+        console.error('❌ Не удалось получить доступ к микрофону:', err);
+        alert('Не удалось включить микрофон. Проверьте разрешения.');
+    }
+}
+
+// ---------- ВКЛЮЧЕНИЕ/ВЫКЛЮЧЕНИЕ КАМЕРЫ ----------
+async function toggleCamera() {
+    if (!localStream) {
+        // Если ещё нет потока (нет микрофона) — сначала включаем микрофон
+        await enableMicrophone();
+    }
+
+    if (isCameraActive) {
+        // Выключаем камеру: отключаем видеотрек, меняем направление трансивера
+        localStream.getVideoTracks().forEach(track => {
+            track.enabled = false;
+            // Не останавливаем, просто отключаем
+        });
+        isCameraActive = false;
+        document.getElementById('call-cam')?.classList.remove('active');
+
+        // Обновляем направление трансиверов и отправляем offer всем
+        for (const [peerId, pc] of Object.entries(peerConnections)) {
+            const videoTransceiver = pc.getTransceivers().find(t => t.receiver.track.kind === 'video');
+            if (videoTransceiver) {
+                videoTransceiver.direction = 'recvonly';
+            }
+            // Также можно отправить offer для обновления
+            await sendOffer(peerId, pc);
+        }
+        console.log('📷 Камера выключена');
+    } else {
+        // Включаем камеру
+        try {
+            // Если у нас уже есть поток (микрофон), добавляем видеотрек
+            if (!localStream.getVideoTracks().length) {
+                const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                const videoTrack = videoStream.getVideoTracks()[0];
+                localStream.addTrack(videoTrack);
+            }
+            localStream.getVideoTracks().forEach(track => { track.enabled = true; });
+            isCameraActive = true;
+            document.getElementById('call-cam')?.classList.add('active');
+
+            // Обновляем направление трансиверов и отправляем offer всем
+            for (const [peerId, pc] of Object.entries(peerConnections)) {
+                const videoTransceiver = pc.getTransceivers().find(t => t.receiver.track.kind === 'video');
+                if (videoTransceiver) {
+                    videoTransceiver.direction = 'sendrecv';
+                }
+                addLocalTracksToPeerConnection(pc, peerId);
+                await sendOffer(peerId, pc);
+            }
+            console.log('📷 Камера включена');
+        } catch (err) {
+            console.error('❌ Не удалось включить камеру:', err);
+            alert('Не удалось включить камеру. Проверьте разрешения.');
+        }
+    }
+}
+
 // ---------- ВКЛЮЧЕНИЕ/ВЫКЛЮЧЕНИЕ МИКРОФОНА ----------
 function toggleMic() {
     if (!localStream) {
-        toggleCamera(); // включаем камеру и микрофон вместе
+        enableMicrophone();
         return;
     }
     const audioTrack = localStream.getAudioTracks()[0];
@@ -151,7 +190,7 @@ async function toggleScreenShare() {
     if (window.role !== 'tutor') return;
 
     if (isScreenSharing) {
-        // TODO: остановка демонстрации (пока не реализовано)
+        // TODO: остановка демонстрации экрана (можно добавить позже)
         return;
     }
 
@@ -202,10 +241,7 @@ function removeVideoElement(peerId) {
 
 function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
-    if (!grid) {
-        console.warn('⚠️ video-grid не найден');
-        return;
-    }
+    if (!grid) return;
 
     removeVideoElement(peerId);
 
@@ -247,10 +283,12 @@ function createPeerConnection(peerId) {
         ]
     });
 
-    // 🔥 Добавляем transceivers с направлением 'recvonly' (ждём поток от пира)
-    pc.addTransceiver('audio', { direction: 'recvonly' });
+    // 🔥 ФИКСИРОВАННЫЙ ПОРЯДОК: сначала audio, потом video
+    // Для аудио: сразу sendrecv (чтобы отправлять микрофон)
+    // Для видео: recvonly (ждём, пока собеседник включит камеру)
+    pc.addTransceiver('audio', { direction: 'sendrecv' });
     pc.addTransceiver('video', { direction: 'recvonly' });
-    console.log(`🔧 Создано peer-соединение для ${peerId} (recvonly)`);
+    console.log(`🔧 Создано peer-соединение для ${peerId} (audio:sendrecv, video:recvonly)`);
 
     pc._isNegotiating = false;
     peerConnections[peerId] = pc;
@@ -301,7 +339,6 @@ function initWebRTC(socket, roomId, role) {
 
         for (const { peerId } of participants) {
             if (peerId === socket.id) continue;
-
             const pc = createPeerConnection(peerId);
 
             if (localStream) {
@@ -342,9 +379,9 @@ function initWebRTC(socket, roomId, role) {
         let pc = peerConnections[from];
         if (!pc) pc = createPeerConnection(from);
 
-        // 🔥 Важно: добавляем локальные треки ПЕРЕД ответом
+        // Добавляем локальные треки (если есть)
         if (localStream) {
-            await addLocalTracksToPeerConnection(pc, from);
+            addLocalTracksToPeerConnection(pc, from);
         }
 
         try {
@@ -394,7 +431,12 @@ function initWebRTC(socket, roomId, role) {
     if (camBtn) camBtn.addEventListener('click', toggleCamera);
 
     const micBtn = document.getElementById('call-mic');
-    if (micBtn) micBtn.addEventListener('click', toggleMic);
+    if (micBtn) {
+        micBtn.addEventListener('click', toggleMic);
+        // Устанавливаем начальное состояние (микрофон выключен, но мы его включим позже)
+        micBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+        micBtn.classList.remove('active');
+    }
 
     const screenBtn = document.getElementById('call-screen');
     if (screenBtn && role === 'tutor') {
@@ -408,6 +450,11 @@ function initWebRTC(socket, roomId, role) {
         });
     }
 
-    // --- АВТОМАТИЧЕСКИ ВКЛЮЧАЕМ МИКРОФОН У УЧЕНИКА? НЕТ, ТОЛЬКО ПО КНОПКЕ ---
-    // Ученик может сам включить камеру
+    // --- АВТОМАТИЧЕСКОЕ ВКЛЮЧЕНИЕ МИКРОФОНА ДЛЯ УЧЕНИКА ---
+    if (role === 'student') {
+        enableMicrophone();
+    } else if (role === 'tutor') {
+        // Для репетитора тоже автоматически включаем микрофон при входе
+        enableMicrophone();
+    }
 }
