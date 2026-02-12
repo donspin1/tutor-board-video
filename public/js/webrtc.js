@@ -1,4 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ АБСОЛЮТНО РАБОЧАЯ ВЕРСИЯ
+// webrtc.js — ФИНАЛЬНАЯ АБСОЛЮТНО РАБОЧАЯ ВЕРСИЯ (с гарантированным socket.id)
 
 let localStream = null;
 let peerConnections = {};
@@ -261,15 +261,17 @@ function initWebRTC(socket, roomId, role) {
     
     console.log(`📹 WebRTC: Инициализация для ${role}`);
 
-    // Убеждаемся, что socket.id существует
-    setTimeout(() => {
-        if (socket.id) {
-            socket.emit('join-video-room', { roomId, peerId: socket.id, role });
-            console.log(`✅ Присоединились к видеокомнате, peerId: ${socket.id}`);
-        } else {
-            console.error('❌ socket.id не определён!');
-        }
-    }, 100);
+    // ✅ Дожидаемся, пока сокет подключится и получит свой id
+    socket.on('connect', function() {
+        console.log(`✅ Socket connected, id: ${socket.id}`);
+        socket.emit('join-video-room', { roomId, peerId: socket.id, role });
+    });
+
+    // Если сокет уже подключён, событие 'connect' не сработает, поэтому проверим текущий статус
+    if (socket.connected) {
+        console.log(`✅ Socket already connected, id: ${socket.id}`);
+        socket.emit('join-video-room', { roomId, peerId: socket.id, role });
+    }
 
     // --- СОБЫТИЯ ---
     socket.on('user-joined', async ({ peerId, role: remoteRole }) => {
@@ -339,10 +341,18 @@ function initWebRTC(socket, roomId, role) {
 
     setupButtons();
 
-    // АВТОСТАРТ ДЛЯ УЧЕНИКА
+    // АВТОСТАРТ ДЛЯ УЧЕНИКА (с задержкой после готовности сокета)
     if (role === 'student') {
-        setTimeout(() => {
-            startVideoCall(true);
-        }, 1000);
+        // Дождёмся либо события 'connect', либо сразу, если уже подключён
+        const startVideo = () => {
+            setTimeout(() => {
+                startVideoCall(true);
+            }, 1000);
+        };
+        if (socket.connected) {
+            startVideo();
+        } else {
+            socket.once('connect', startVideo);
+        }
     }
 }
