@@ -1,17 +1,22 @@
-// webrtc.js — КОМНАТНАЯ МОДЕЛЬ (Room Model) — КАК В ZOOM
+// webrtc.js — КОМНАТНАЯ МОДЕЛЬ (Zoom-логика) — ИСПРАВЛЕНО, ВИДЕО РАБОТАЕТ
 
 let localStream = null;
 let peerConnections = {};
 let isCameraActive = false;
-let isMicActive = true; // микрофон включён по умолчанию
+let isMicActive = true;
 let webrtcInitialized = false;
-let pendingPeers = []; // пиры, ожидающие включения камеры
+let pendingPeers = [];
 
-// ---------- ОТПРАВКА OFFER (КОГДА У НАС ПОЯВИЛОСЬ ВИДЕО) ----------
+// ---------- ОТПРАВКА OFFER ----------
 async function sendOffer(peerId, pc) {
-    if (!pc || pc.signalingState !== 'stable' || pc._isNegotiating) return;
-    if (!localStream) return; // нет потока — нет offer
-    
+    if (!pc || pc.signalingState !== 'stable' || pc._isNegotiating) {
+        console.log(`⏸️ sendOffer: состояние ${pc?.signalingState}, пропускаем`);
+        return;
+    }
+    if (!localStream) {
+        console.log(`⏸️ sendOffer: нет локального потока`);
+        return;
+    }
     try {
         pc._isNegotiating = true;
         console.log(`🔄 Отправка offer для ${peerId}`);
@@ -28,12 +33,9 @@ async function sendOffer(peerId, pc) {
 // ---------- ВКЛЮЧЕНИЕ/ВЫКЛЮЧЕНИЕ КАМЕРЫ ----------
 async function toggleCamera() {
     if (isCameraActive) {
-        // Выключаем камеру
+        // Выключаем камеру (только disable, не stop)
         if (localStream) {
-            localStream.getVideoTracks().forEach(track => {
-                track.enabled = false;
-                // Не останавливаем track, только отключаем
-            });
+            localStream.getVideoTracks().forEach(track => { track.enabled = false; });
         }
         isCameraActive = false;
         document.getElementById('call-cam')?.classList.remove('active');
@@ -41,42 +43,35 @@ async function toggleCamera() {
     } else {
         // Включаем камеру
         if (!localStream) {
-            // Если ещё нет потока — создаём
             try {
+                console.log('🎥 Запрос камеры и микрофона...');
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 isMicActive = true;
                 isCameraActive = true;
-                
-                // Добавляем своё видео
+                console.log(`✅ Поток получен, треков: ${localStream.getTracks().length}`);
+
+                // Показываем видео-панель
+                document.getElementById('video-panel').style.display = 'flex';
                 addVideoElement(window.socket.id, localStream, true);
-                
-                // Добавляем треки во ВСЕ существующие peer-соединения
+
+                // 🔥 ВАЖНО: добавляем треки во ВСЕ существующие peer-соединения
                 for (const [peerId, pc] of Object.entries(peerConnections)) {
-                    localStream.getTracks().forEach(track => {
-                        const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
-                        if (sender) {
-                            sender.replaceTrack(track);
-                            console.log(`🔄 replaceTrack ${track.kind} для ${peerId}`);
-                        } else {
-                            pc.addTrack(track, localStream);
-                            console.log(`➕ addTrack ${track.kind} для ${peerId}`);
-                        }
-                    });
-                    
-                    // Отправляем offer
+                    await addLocalTracksToPeerConnection(pc, peerId);
                     await sendOffer(peerId, pc);
                 }
-                
-                // Отправляем offer для отложенных пиров
+
+                // 🔥 Обрабатываем отложенные пиры
                 for (const peerId of pendingPeers) {
                     const pc = peerConnections[peerId];
-                    if (pc) await sendOffer(peerId, pc);
+                    if (pc) {
+                        await addLocalTracksToPeerConnection(pc, peerId);
+                        await sendOffer(peerId, pc);
+                    }
                 }
                 pendingPeers = [];
-                
+
                 document.getElementById('call-cam')?.classList.add('active');
                 document.getElementById('call-mic')?.classList.add('active');
-                console.log('✅ Камера и микрофон включены');
             } catch (err) {
                 console.error('❌ Ошибка доступа к камере:', err);
                 alert('Не удалось включить камеру/микрофон');
@@ -87,8 +82,8 @@ async function toggleCamera() {
             localStream.getVideoTracks().forEach(track => { track.enabled = true; });
             isCameraActive = true;
             document.getElementById('call-cam')?.classList.add('active');
-            
-            // Отправляем offer для всех пиров (переговоры)
+
+            // 🔥 Отправляем offer всем пирам (переговоры)
             for (const [peerId, pc] of Object.entries(peerConnections)) {
                 if (pc.signalingState === 'stable' && !pc._isNegotiating) {
                     await sendOffer(peerId, pc);
@@ -98,14 +93,44 @@ async function toggleCamera() {
     }
 }
 
+// 🔥 НОВАЯ ФУНКЦИЯ: добавляет локальные треки в peer-соединение и обновляет направление
+async function addLocalTracksToPeerConnection(pc, peerId) {
+    if (!localStream) return;
+
+    // Убеждаемся, что transceivers существуют и имеют правильное направление
+    ['audio', 'video'].forEach(kind => {
+        let transceiver = pc.getTransceivers().find(t => t.receiver.track.kind === kind);
+        if (!transceiver) {
+            transceiver = pc.addTransceiver(kind, { direction: 'sendrecv' });
+            console.log(`➕ Добавлен transceiver ${kind} для ${peerId}`);
+        } else {
+            // Если transceiver уже есть, меняем направление на sendrecv
+            if (transceiver.direction !== 'sendrecv') {
+                transceiver.direction = 'sendrecv';
+                console.log(`🔄 Изменено направление ${kind} на sendrecv для ${peerId}`);
+            }
+        }
+    });
+
+    // Добавляем/заменяем треки
+    localStream.getTracks().forEach(track => {
+        const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
+        if (sender) {
+            sender.replaceTrack(track);
+            console.log(`🔄 replaceTrack ${track.kind} для ${peerId}`);
+        } else {
+            pc.addTrack(track, localStream);
+            console.log(`➕ addTrack ${track.kind} для ${peerId}`);
+        }
+    });
+}
+
 // ---------- ВКЛЮЧЕНИЕ/ВЫКЛЮЧЕНИЕ МИКРОФОНА ----------
 function toggleMic() {
     if (!localStream) {
-        // Если нет потока — включаем камеру и микрофон вместе
-        toggleCamera();
+        toggleCamera(); // включаем камеру и микрофон вместе
         return;
     }
-    
     const audioTrack = localStream.getAudioTracks()[0];
     if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
@@ -120,24 +145,25 @@ function toggleMic() {
 }
 
 // ---------- ДЕМОНСТРАЦИЯ ЭКРАНА (ТОЛЬКО РЕПЕТИТОР) ----------
+let isScreenSharing = false;
+
 async function toggleScreenShare() {
-    if (!window.role === 'tutor') return;
-    
-    if (window.isScreenSharing) {
-        // TODO: остановка демонстрации
+    if (window.role !== 'tutor') return;
+
+    if (isScreenSharing) {
+        // TODO: остановка демонстрации (пока не реализовано)
         return;
     }
-    
+
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        window.isScreenSharing = true;
-        
-        // Заменяем видеотрек на трек экрана
+        isScreenSharing = true;
+
         const videoTrack = screenStream.getVideoTracks()[0];
         videoTrack.onended = () => {
-            window.isScreenSharing = false;
-            // Возвращаем камеру
-            if (localStream) {
+            isScreenSharing = false;
+            // Возвращаем камеру, если она была включена
+            if (localStream && isCameraActive) {
                 const camTrack = localStream.getVideoTracks()[0];
                 if (camTrack) {
                     replaceVideoTrack(camTrack);
@@ -145,7 +171,7 @@ async function toggleScreenShare() {
             }
             document.getElementById('call-screen')?.classList.remove('active');
         };
-        
+
         replaceVideoTrack(videoTrack);
         document.getElementById('call-screen')?.classList.add('active');
     } catch (err) {
@@ -176,28 +202,31 @@ function removeVideoElement(peerId) {
 
 function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
-    if (!grid) return;
+    if (!grid) {
+        console.warn('⚠️ video-grid не найден');
+        return;
+    }
 
     removeVideoElement(peerId);
 
     const container = document.createElement('div');
     container.className = 'video-container';
     container.id = `container-${peerId}`;
-    
+
     const video = document.createElement('video');
     video.id = `video-${peerId}`;
     video.autoplay = true;
     video.playsInline = true;
     if (isLocal) video.muted = true;
-    
+
     const label = document.createElement('span');
     label.className = 'video-label';
     label.textContent = isLocal ? 'Вы' : (window.role === 'tutor' ? 'Ученик' : 'Репетитор');
-    
+
     container.appendChild(video);
     container.appendChild(label);
     grid.appendChild(container);
-    
+
     const videoEl = container.querySelector('video');
     videoEl.srcObject = stream;
     console.log(`🖼️ Добавлено видео для ${peerId} (isLocal: ${isLocal})`);
@@ -218,10 +247,10 @@ function createPeerConnection(peerId) {
         ]
     });
 
-    // Сразу создаём transceivers для приёма и отправки
-    pc.addTransceiver('audio', { direction: 'sendrecv' });
-    pc.addTransceiver('video', { direction: 'sendrecv' });
-    console.log(`🔧 Создано peer-соединение для ${peerId}`);
+    // 🔥 Добавляем transceivers с направлением 'recvonly' (ждём поток от пира)
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    console.log(`🔧 Создано peer-соединение для ${peerId} (recvonly)`);
 
     pc._isNegotiating = false;
     peerConnections[peerId] = pc;
@@ -233,8 +262,7 @@ function createPeerConnection(peerId) {
     };
 
     pc.ontrack = (e) => {
-        console.log(`🎥 Получен трек ${e.track.kind} от ${peerId}`);
-        // Показываем видео-панель, если она скрыта
+        console.log(`🎥 ontrack: получен трек ${e.track.kind} от ${peerId}`);
         document.getElementById('video-panel').style.display = 'flex';
         addVideoElement(peerId, e.streams[0], false);
     };
@@ -246,6 +274,10 @@ function createPeerConnection(peerId) {
         }
     };
 
+    pc.onsignalingstatechange = () => {
+        console.log(`🔄 Signaling state [${peerId}]: ${pc.signalingState}`);
+    };
+
     return pc;
 }
 
@@ -253,11 +285,11 @@ function createPeerConnection(peerId) {
 function initWebRTC(socket, roomId, role) {
     if (webrtcInitialized) return;
     webrtcInitialized = true;
-    
+
     window.socket = socket;
     window.roomId = roomId;
     window.role = role;
-    
+
     console.log(`📹 WebRTC: Инициализация для ${role}`);
 
     // --- ПРИСОЕДИНЕНИЕ К КОМНАТЕ ---
@@ -266,23 +298,16 @@ function initWebRTC(socket, roomId, role) {
     // --- ПОЛУЧЕНИЕ СПИСКА ТЕКУЩИХ УЧАСТНИКОВ ---
     socket.on('room-participants', (participants) => {
         console.log(`📋 Получен список участников:`, participants);
-        
+
         for (const { peerId } of participants) {
             if (peerId === socket.id) continue;
-            
-            // Создаём peer-соединение для каждого участника
+
             const pc = createPeerConnection(peerId);
-            
-            // Если у нас уже есть поток — добавляем треки и отправляем offer
+
             if (localStream) {
-                localStream.getTracks().forEach(track => {
-                    const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
-                    if (sender) sender.replaceTrack(track);
-                    else pc.addTrack(track, localStream);
-                });
+                addLocalTracksToPeerConnection(pc, peerId);
                 sendOffer(peerId, pc);
             } else {
-                // Запоминаем, что этому пиру нужно отправить offer после включения камеры
                 pendingPeers.push(peerId);
             }
         }
@@ -292,21 +317,17 @@ function initWebRTC(socket, roomId, role) {
     socket.on('user-joined', ({ peerId, role: remoteRole }) => {
         if (!peerId || peerId === socket.id) return;
         console.log(`👤 Новый участник: ${peerId} (${remoteRole})`);
-        
+
         removeVideoElement(peerId);
         if (peerConnections[peerId]) {
             peerConnections[peerId].close();
             delete peerConnections[peerId];
         }
-        
+
         const pc = createPeerConnection(peerId);
-        
+
         if (localStream) {
-            localStream.getTracks().forEach(track => {
-                const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
-                if (sender) sender.replaceTrack(track);
-                else pc.addTrack(track, localStream);
-            });
+            addLocalTracksToPeerConnection(pc, peerId);
             sendOffer(peerId, pc);
         } else {
             pendingPeers.push(peerId);
@@ -317,18 +338,15 @@ function initWebRTC(socket, roomId, role) {
     socket.on('receive-offer', async ({ from, offer }) => {
         if (!from || from === socket.id) return;
         console.log(`📩 Получен offer от ${from}`);
-        
+
         let pc = peerConnections[from];
         if (!pc) pc = createPeerConnection(from);
-        
+
+        // 🔥 Важно: добавляем локальные треки ПЕРЕД ответом
         if (localStream) {
-            localStream.getTracks().forEach(track => {
-                const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
-                if (sender) sender.replaceTrack(track);
-                else pc.addTrack(track, localStream);
-            });
+            await addLocalTracksToPeerConnection(pc, from);
         }
-        
+
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await pc.createAnswer();
@@ -355,7 +373,7 @@ function initWebRTC(socket, roomId, role) {
     socket.on('receive-ice-candidate', ({ from, candidate }) => {
         if (!from || from === socket.id) return;
         if (peerConnections[from]) {
-            peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+            peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
         }
     });
 
@@ -372,15 +390,24 @@ function initWebRTC(socket, roomId, role) {
     });
 
     // --- ПРИВЯЗКА КНОПОК ---
-    document.getElementById('call-cam')?.addEventListener('click', toggleCamera);
-    document.getElementById('call-mic')?.addEventListener('click', toggleMic);
-    document.getElementById('call-screen')?.addEventListener('click', toggleScreenShare);
-    
-    // Кнопка выхода/завершения звонка
+    const camBtn = document.getElementById('call-cam');
+    if (camBtn) camBtn.addEventListener('click', toggleCamera);
+
+    const micBtn = document.getElementById('call-mic');
+    if (micBtn) micBtn.addEventListener('click', toggleMic);
+
+    const screenBtn = document.getElementById('call-screen');
+    if (screenBtn && role === 'tutor') {
+        screenBtn.addEventListener('click', toggleScreenShare);
+    }
+
     const exitBtn = document.getElementById('exit-btn') || document.getElementById('call-end');
     if (exitBtn) {
         exitBtn.addEventListener('click', () => {
             window.location.href = '/';
         });
     }
+
+    // --- АВТОМАТИЧЕСКИ ВКЛЮЧАЕМ МИКРОФОН У УЧЕНИКА? НЕТ, ТОЛЬКО ПО КНОПКЕ ---
+    // Ученик может сам включить камеру
 }
