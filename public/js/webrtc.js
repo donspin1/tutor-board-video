@@ -1,4 +1,4 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (автостарт ученика, независимое видео)
+// webrtc.js — ИДЕАЛЬНАЯ ВЕРСИЯ (репетитор видит ученика без своей камеры)
 
 let localStream = null;
 let peerConnections = {};
@@ -7,139 +7,144 @@ let webrtcInitialized = false;
 
 function initWebRTC(socket, roomId, role) {
     if (webrtcInitialized) return;
+    webrtcInitialized = true;
     
     window.socket = socket;
     window.roomId = roomId;
     window.role = role;
-    webrtcInitialized = true;
-
+    
     console.log(`📹 WebRTC: Инициализация для ${role}`);
 
-    // Немедленно присоединяемся к видеокомнате
+    // --- 1. НЕМЕДЛЕННО ПРИСОЕДИНЯЕМСЯ К ВИДЕОКОМНАТЕ ---
     socket.emit('join-video-room', { roomId, peerId: socket.id, role });
 
-    // --- Сокетные обработчики ---
+    // --- 2. КОГДА КТО-ТО ПРИСОЕДИНЯЕТСЯ К КОМНАТЕ ---
     socket.on('user-joined', async ({ peerId, role: remoteRole }) => {
-        console.log(`👤 Подключился: ${peerId} (${remoteRole})`);
+        console.log(`👤 user-joined: ${peerId} (${remoteRole})`);
         
-        const pc = createPeerConnection(peerId);
+        // Создаём peer-соединение
+        let pc = peerConnections[peerId];
+        if (!pc) {
+            pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+            peerConnections[peerId] = pc;
 
-        // Если у нас уже есть локальный поток — добавляем треки
+            pc.onicecandidate = (e) => {
+                if (e.candidate) {
+                    socket.emit('send-ice-candidate', { toPeerId: peerId, candidate: e.candidate });
+                }
+            };
+
+            pc.ontrack = (e) => {
+                console.log(`🎥 Получен трек от ${peerId}`);
+                document.getElementById('video-panel').style.display = 'flex';
+                addVideoElement(peerId, e.streams[0], false);
+            };
+        }
+
+        // Если у нас уже есть локальный поток — добавляем его треки
         if (localStream) {
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
 
-        // Инициатор: репетитор, либо ученик, если к нему присоединился репетитор
-        if (window.role === 'tutor' || (window.role === 'student' && remoteRole === 'tutor')) {
+        // Репетитор всегда инициатор (создаёт offer)
+        if (role === 'tutor' || (role === 'student' && remoteRole === 'tutor')) {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             socket.emit('send-offer', { toPeerId: peerId, offer });
         }
     });
 
+    // --- 3. ПОЛУЧЕНИЕ OFFER ---
     socket.on('receive-offer', async ({ from, offer }) => {
-        let pc = createPeerConnection(from);
+        console.log(`📩 receive-offer от ${from}`);
+        
+        let pc = peerConnections[from];
+        if (!pc) {
+            pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+            peerConnections[from] = pc;
+
+            pc.onicecandidate = (e) => {
+                if (e.candidate) {
+                    socket.emit('send-ice-candidate', { toPeerId: from, candidate: e.candidate });
+                }
+            };
+
+            pc.ontrack = (e) => {
+                console.log(`🎥 Получен трек от ${from}`);
+                document.getElementById('video-panel').style.display = 'flex';
+                addVideoElement(from, e.streams[0], false);
+            };
+        }
+
+        // Добавляем локальный поток, если есть
         if (localStream) {
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
+
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('send-answer', { toPeerId: from, answer });
     });
 
-    socket.on('receive-answer', async ({ from, answer }) => {
+    // --- 4. ПОЛУЧЕНИЕ ANSWER ---
+    socket.on('receive-answer', ({ from, answer }) => {
         if (peerConnections[from]) {
-            await peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer));
+            peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer));
         }
     });
 
-    socket.on('receive-ice-candidate', async ({ from, candidate }) => {
+    // --- 5. ПОЛУЧЕНИЕ ICE-КАНДИДАТА ---
+    socket.on('receive-ice-candidate', ({ from, candidate }) => {
         if (peerConnections[from]) {
-            await peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
+            peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
         }
     });
 
+    // --- 6. ПОЛЬЗОВАТЕЛЬ ПОКИНУЛ КОМНАТУ ---
     socket.on('user-left', (peerId) => {
-        removeVideoElement(peerId);
         if (peerConnections[peerId]) {
             peerConnections[peerId].close();
             delete peerConnections[peerId];
         }
+        removeVideoElement(peerId);
     });
 
-    // --- Навешиваем кнопки ---
-    setupButtons();
-
-    // --- АВТОСТАРТ ДЛЯ УЧЕНИКА (без всплывающего окна ошибки) ---
-    if (window.role === 'student') {
-        // Небольшая задержка, чтобы сокет успел присоединиться
+    // --- 7. АВТОСТАРТ КАМЕРЫ ДЛЯ УЧЕНИКА ---
+    if (role === 'student') {
         setTimeout(() => {
-            startVideoCall(true);
+            startVideoCall(true); // true = не показывать alert при ошибке
         }, 500);
     }
+
+    // --- 8. ПРИВЯЗКА КНОПОК ---
+    setupButtons();
 }
 
 function setupButtons() {
-    const btnMap = {
-        'tool-video': toggleVideoCall,
-        'toggle-mic': toggleMicrophone,
-        'toggle-cam': toggleCamera,
-        'end-call': stopVideoCall,
-        'toggle-screen': () => window.role === 'tutor' && startScreenShare()
-    };
+    const videoBtn = document.getElementById('tool-video');
+    if (videoBtn) videoBtn.onclick = toggleVideoCall;
 
-    Object.entries(btnMap).forEach(([id, func]) => {
-        const btn = document.getElementById(id);
-        if (btn) btn.onclick = func;
-    });
-}
+    const toggleMic = document.getElementById('toggle-mic');
+    if (toggleMic) toggleMic.onclick = toggleMicrophone;
 
-function createPeerConnection(peerId) {
-    if (peerConnections[peerId]) return peerConnections[peerId];
+    const toggleCam = document.getElementById('toggle-cam');
+    if (toggleCam) toggleCam.onclick = toggleCamera;
 
-    const pc = new RTCPeerConnection({
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-    });
+    const endCallBtn = document.getElementById('end-call');
+    if (endCallBtn) endCallBtn.onclick = stopVideoCall;
 
-    peerConnections[peerId] = pc;
-
-    pc.onicecandidate = (e) => {
-        if (e.candidate) {
-            window.socket.emit('send-ice-candidate', { toPeerId: peerId, candidate: e.candidate });
-        }
-    };
-
-    pc.ontrack = (e) => {
-        console.log("🎯 Получен удаленный трек от", peerId);
-        const panel = document.getElementById('video-panel');
-        if (panel) panel.style.display = 'flex';
-        addVideoElement(peerId, e.streams[0], false);
-    };
-
-    pc.onnegotiationneeded = async () => {
-        if (pc.signalingState === 'stable') {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            window.socket.emit('send-offer', { toPeerId: peerId, offer });
-        }
-    };
-
-    return pc;
-}
-
-// ---------- УПРАВЛЕНИЕ ЗВОНКОМ ----------
-async function toggleVideoCall() {
-    if (isVideoActive) {
-        stopVideoCall();
-    } else {
-        await startVideoCall(false);
+    const toggleScreen = document.getElementById('toggle-screen');
+    if (toggleScreen && window.role === 'tutor') {
+        toggleScreen.onclick = startScreenShare;
     }
 }
 
+// ---------- ЗАПУСК ВИДЕОЗВОНКА ----------
 async function startVideoCall(isSilent = false) {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -156,15 +161,9 @@ async function startVideoCall(isSilent = false) {
 
         addVideoElement(window.socket.id, localStream, true);
 
-        // Добавляем треки во все существующие соединения (без дублирования)
+        // Добавляем треки во все существующие peer-соединения
         Object.values(peerConnections).forEach(pc => {
-            localStream.getTracks().forEach(track => {
-                const alreadyAdded = pc.getSenders().some(s => s.track === track);
-                if (!alreadyAdded) {
-                    pc.addTrack(track, localStream);
-                    console.log(`➕ Добавлен трек ${track.kind}`);
-                }
-            });
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         });
 
         updateMicButton(true);
@@ -257,7 +256,7 @@ function replaceVideoTrack(newTrack) {
             oldTrack.stop();
         }
         localStream.addTrack(newTrack);
-        const localVideo = document.querySelector(`#video-${window.socket.id}`);
+        const localVideo = document.getElementById(`video-${window.socket.id}`);
         if (localVideo) localVideo.srcObject = localStream;
     }
 }
@@ -281,7 +280,7 @@ function addVideoElement(peerId, stream, isLocal = false) {
         
         const label = document.createElement('span');
         label.className = 'video-label';
-        label.textContent = isLocal ? "Вы" : (window.role === 'tutor' ? 'Ученик' : 'Репетитор');
+        label.textContent = isLocal ? 'Вы' : (window.role === 'tutor' ? 'Ученик' : 'Репетитор');
         
         container.appendChild(video);
         container.appendChild(label);
@@ -298,7 +297,7 @@ function removeVideoElement(peerId) {
     document.getElementById(`container-${peerId}`)?.remove();
 }
 
-// ---------- ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ ----------
+// ---------- ПЕРЕТАСКИВАНИЕ ----------
 function makeDraggable(element, handle) {
     if (!element || !handle) return;
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;

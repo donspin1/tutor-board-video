@@ -25,17 +25,9 @@ io.on('connection', (socket) => {
     // ---------- ДОСКА ----------
     socket.on('join-room', (roomId, role) => {
         console.log(`📥 ${role} вход в ${roomId}`);
-
         if (role === 'tutor') {
             if (!rooms.has(roomId)) {
-                rooms.set(roomId, { 
-                    objects: [], 
-                    locked: false, 
-                    background: 'white',
-                    width: null,
-                    height: null 
-                });
-                console.log(`🆕 Комната ${roomId} создана`);
+                rooms.set(roomId, { objects: [], locked: false, width: null, height: null });
             }
             socket.join(roomId);
             const room = rooms.get(roomId);
@@ -44,7 +36,7 @@ io.on('connection', (socket) => {
                     objects: room.objects || [],
                     width: room.width,
                     height: room.height,
-                    background: room.background || 'white'
+                    background: 'white'
                 },
                 locked: room.locked
             });
@@ -60,26 +52,23 @@ io.on('connection', (socket) => {
                     objects: room.objects || [],
                     width: room.width,
                     height: room.height,
-                    background: room.background || 'white'
+                    background: 'white'
                 },
                 locked: room.locked
             });
         }
     });
 
-    // Полное состояние canvas от репетитора (с размерами)
     socket.on('canvas-state', ({ roomId, canvasJson }) => {
         const room = rooms.get(roomId);
         if (room) {
             room.objects = canvasJson.objects || [];
             room.width = canvasJson.width;
             room.height = canvasJson.height;
-            room.background = canvasJson.background || 'white';
             socket.to(roomId).emit('canvas-state', { canvasJson });
         }
     });
 
-    // Рисование учеников (отдельные объекты)
     socket.on('drawing-data', ({ roomId, object }) => {
         const room = rooms.get(roomId);
         if (room) {
@@ -102,7 +91,6 @@ io.on('connection', (socket) => {
         const room = rooms.get(roomId);
         if (room) {
             room.objects = [];
-            room.background = 'white';
             room.width = null;
             room.height = null;
             io.to(roomId).emit('clear-canvas');
@@ -117,7 +105,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ---------- ВИДЕО ----------
+    // ---------- ВИДЕО (WebRTC) ----------
     socket.on('join-video-room', ({ roomId, peerId, role }) => {
         socket.join(`video-${roomId}`);
         socket.to(`video-${roomId}`).emit('user-joined', { peerId, role });
