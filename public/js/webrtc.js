@@ -1,13 +1,15 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (полная очистка при отключении и переподключении)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (без гонок, чёрный экран исправлен)
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
 let webrtcInitialized = false;
 
-// ---------- ПРИНУДИТЕЛЬНАЯ ПЕРЕГОВОРНАЯ СЕССИЯ ----------
+// ---------- ПРИНУДИТЕЛЬНАЯ ПЕРЕГОВОРНАЯ СЕССИЯ (ТОЛЬКО ДЛЯ РЕПЕТИТОРА) ----------
 async function negotiate(peerId, pc) {
     if (!pc || pc.signalingState !== 'stable') return;
+    // Только репетитор инициирует переговоры
+    if (window.role !== 'tutor') return;
     console.log(`🔄 Negotiation with ${peerId}`);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -31,7 +33,8 @@ async function startVideoCall(isSilent = false) {
 
         addVideoElement(window.socket.id, localStream, true);
 
-        // Добавляем треки во все существующие peer-соединения и форсируем переговоры
+        // Добавляем треки во все существующие peer-соединения
+        // и форсируем переговоры (только для репетитора)
         for (const [peerId, pc] of Object.entries(peerConnections)) {
             const senders = pc.getSenders().map(s => s.track?.kind);
             localStream.getTracks().forEach(track => {
@@ -40,7 +43,10 @@ async function startVideoCall(isSilent = false) {
                     console.log(`➕ Добавлен трек ${track.kind} для ${peerId}`);
                 }
             });
-            await negotiate(peerId, pc);
+            // Репетитор инициирует переговоры после добавления треков
+            if (window.role === 'tutor') {
+                await negotiate(peerId, pc);
+            }
         }
 
         updateMicButton(true);
@@ -147,7 +153,6 @@ function replaceVideoTrack(newTrack) {
 function removeVideoElement(peerId) {
     const container = document.getElementById(`container-${peerId}`);
     if (container) {
-        // Останавливаем видео-поток
         const video = container.querySelector('video');
         if (video && video.srcObject) {
             video.srcObject.getTracks().forEach(track => track.stop());
@@ -163,7 +168,6 @@ function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
 
-    // Принудительно удаляем старый контейнер, если он есть
     removeVideoElement(peerId);
 
     const container = document.createElement('div');
@@ -230,9 +234,8 @@ function makeDraggable(element, handle) {
     }
 }
 
-// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ ----------
+// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ (БЕЗ onnegotiationneeded) ----------
 function createPeerConnection(peerId) {
-    // Если соединение с таким peerId уже есть, закрываем его и удаляем
     if (peerConnections[peerId]) {
         console.warn(`⚠️ Соединение с ${peerId} уже существует, закрываем старое`);
         peerConnections[peerId].close();
@@ -269,13 +272,6 @@ function createPeerConnection(peerId) {
 
     pc.onsignalingstatechange = () => {
         console.log(`🔄 Signaling state с ${peerId}: ${pc.signalingState}`);
-    };
-
-    pc.onnegotiationneeded = async () => {
-        console.log(`🤝 negotiationneeded для ${peerId}`);
-        if (pc.signalingState === 'stable') {
-            await negotiate(peerId, pc);
-        }
     };
 
     return pc;
@@ -335,7 +331,6 @@ function initWebRTC(socket, roomId, role) {
         }
         console.log(`👤 user-joined: ${peerId} (${remoteRole})`);
         
-        // Удаляем старый видео-элемент (на случай, если он застрял)
         removeVideoElement(peerId);
         
         const pc = createPeerConnection(peerId);
@@ -344,12 +339,14 @@ function initWebRTC(socket, roomId, role) {
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
 
-        // Репетитор всегда инициатор
+        // ТОЛЬКО РЕПЕТИТОР ИНИЦИИРУЕТ OFFER
         if (role === 'tutor') {
-            // Небольшая задержка для стабилизации
             setTimeout(async () => {
                 if (pc.signalingState === 'stable') {
-                    await negotiate(peerId, pc);
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    socket.emit('send-offer', { toPeerId: peerId, offer });
+                    console.log(`📤 Offer отправлен репетитором для ${peerId}`);
                 }
             }, 200);
         }
@@ -364,6 +361,7 @@ function initWebRTC(socket, roomId, role) {
             pc = createPeerConnection(from);
         }
 
+        // Добавляем локальные треки, если есть
         if (localStream) {
             const senders = pc.getSenders().map(s => s.track?.kind);
             localStream.getTracks().forEach(track => {
@@ -373,18 +371,28 @@ function initWebRTC(socket, roomId, role) {
             });
         }
 
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('send-answer', { toPeerId: from, answer });
-        console.log(`📤 Answer отправлен для ${from}`);
+        // Отвечаем только если состояние stable
+        if (pc.signalingState === 'stable') {
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('send-answer', { toPeerId: from, answer });
+            console.log(`📤 Answer отправлен для ${from}`);
+        } else {
+            console.warn(`⚠️ receive-offer: состояние не stable (${pc.signalingState}), игнорируем`);
+        }
     });
 
     socket.on('receive-answer', ({ from, answer }) => {
         if (!from || !answer) return;
         if (peerConnections[from]) {
-            peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer));
-            console.log(`✅ Answer установлен для ${from}`);
+            const pc = peerConnections[from];
+            if (pc.signalingState === 'have-local-offer') {
+                pc.setRemoteDescription(new RTCSessionDescription(answer));
+                console.log(`✅ Answer установлен для ${from}`);
+            } else {
+                console.warn(`⚠️ receive-answer: состояние ${pc.signalingState}, игнорируем`);
+            }
         }
     });
 
