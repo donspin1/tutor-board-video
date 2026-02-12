@@ -1,27 +1,41 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (полная очистка при отключении и переподключении)
-// 🔥 ИСПРАВЛЕНО: только репетитор создаёт offer, ученик использует need-offer
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (максимум логов, никаких гонок)
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
 let webrtcInitialized = false;
 
-// ---------- ПРИНУДИТЕЛЬНАЯ ПЕРЕГОВОРНАЯ СЕССИЯ (ТОЛЬКО ДЛЯ РЕПЕТИТОРА) ----------
+// ---------- ПЕРЕГОВОРЫ (ТОЛЬКО ДЛЯ РЕПЕТИТОРА) ----------
 async function negotiate(peerId, pc) {
-    if (!pc || pc.signalingState !== 'stable') return;
-    // 🔥 ИСПРАВЛЕНО: только репетитор может инициировать offer
-    if (window.role !== 'tutor') return;
-    console.log(`🔄 Репетитор создаёт offer для ${peerId}`);
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    window.socket.emit('send-offer', { toPeerId: peerId, offer });
+    if (!pc) {
+        console.log(`❌ negotiate: pc для ${peerId} не найден`);
+        return;
+    }
+    if (window.role !== 'tutor') {
+        console.log(`⏸️ negotiate: не репетитор, пропускаем`);
+        return;
+    }
+    if (pc.signalingState !== 'stable') {
+        console.log(`⏳ negotiate: состояние ${pc.signalingState}, ждём stable`);
+        return;
+    }
+    try {
+        console.log(`🔄 РЕПЕТИТОР создаёт offer для ${peerId}`);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        window.socket.emit('send-offer', { toPeerId: peerId, offer });
+    } catch (e) {
+        console.error(`❌ Ошибка negotiate:`, e);
+    }
 }
 
 // ---------- ОСНОВНЫЕ ФУНКЦИИ ВИДЕО ----------
 async function startVideoCall(isSilent = false) {
     try {
+        console.log(`🎥 startVideoCall: запрос камеры`);
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         isVideoActive = true;
+        console.log(`✅ Камера получена, треков: ${localStream.getTracks().length}`);
 
         const panel = document.getElementById('video-panel');
         if (panel) {
@@ -44,8 +58,7 @@ async function startVideoCall(isSilent = false) {
                 }
             });
 
-            // 🔥 ИСПРАВЛЕНО: репетитор сам запускает переговоры,
-            // ученик полагается на negotiationneeded
+            // 🔥 ИСПРАВЛЕНО: репетитор сам запускает переговоры
             if (window.role === 'tutor') {
                 await negotiate(peerId, pc);
             }
@@ -71,6 +84,7 @@ function stopVideoCall() {
     document.getElementById('tool-video')?.classList.remove('active');
     updateMicButton(false);
     updateCamButton(false);
+    console.log('🛑 Видеозвонок остановлен');
 }
 
 function toggleVideoCall() {
@@ -151,11 +165,10 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- ПОЛНОЕ УДАЛЕНИЕ ВИДЕО-ЭЛЕМЕНТА ----------
+// ---------- УДАЛЕНИЕ ВИДЕО-ЭЛЕМЕНТА ----------
 function removeVideoElement(peerId) {
     const container = document.getElementById(`container-${peerId}`);
     if (container) {
-        // Останавливаем видео-поток
         const video = container.querySelector('video');
         if (video && video.srcObject) {
             video.srcObject.getTracks().forEach(track => track.stop());
@@ -171,7 +184,7 @@ function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
 
-    // Принудительно удаляем старый контейнер, если он есть
+    // Принудительно удаляем старый контейнер
     removeVideoElement(peerId);
 
     const container = document.createElement('div');
@@ -238,11 +251,10 @@ function makeDraggable(element, handle) {
     }
 }
 
-// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ (с onnegotiationneeded) ----------
+// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ ----------
 function createPeerConnection(peerId) {
-    // Если соединение с таким peerId уже есть, закрываем его и удаляем
     if (peerConnections[peerId]) {
-        console.warn(`⚠️ Соединение с ${peerId} уже существует, закрываем старое`);
+        console.warn(`⚠️ Соединение с ${peerId} уже есть, закрываем`);
         peerConnections[peerId].close();
         delete peerConnections[peerId];
     }
@@ -255,6 +267,7 @@ function createPeerConnection(peerId) {
     });
 
     peerConnections[peerId] = pc;
+    console.log(`🔧 Создано peer-соединение для ${peerId}`);
 
     pc.onicecandidate = (e) => {
         if (e.candidate) {
@@ -263,33 +276,33 @@ function createPeerConnection(peerId) {
     };
 
     pc.ontrack = (e) => {
-        console.log(`🎥 Получен трек ${e.track.kind} от ${peerId}`);
+        console.log(`🎥 ontrack: получен трек ${e.track.kind} от ${peerId}`);
         document.getElementById('video-panel').style.display = 'flex';
         addVideoElement(peerId, e.streams[0], false);
     };
 
     pc.oniceconnectionstatechange = () => {
-        console.log(`🔄 ICE state с ${peerId}: ${pc.iceConnectionState}`);
+        console.log(`🔄 ICE state [${peerId}]: ${pc.iceConnectionState}`);
         if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
             removeVideoElement(peerId);
         }
     };
 
     pc.onsignalingstatechange = () => {
-        console.log(`🔄 Signaling state с ${peerId}: ${pc.signalingState}`);
+        console.log(`🔄 Signaling state [${peerId}]: ${pc.signalingState}`);
     };
 
-    // 🔥 ИСПРАВЛЕНО: роль определяет действие при negotiationneeded
+    // 🔥 ИСПРАВЛЕНО: роль определяет действие
     pc.onnegotiationneeded = async () => {
-        console.log(`🤝 negotiationneeded для ${peerId}, роль: ${window.role}`);
-        if (pc.signalingState !== 'stable') return;
-
+        console.log(`🤝 negotiationneeded для ${peerId}, роль: ${window.role}, состояние: ${pc.signalingState}`);
+        if (pc.signalingState !== 'stable') {
+            console.log(`⏳ negotiationneeded: состояние не stable (${pc.signalingState}), ждём`);
+            return;
+        }
         if (window.role === 'tutor') {
-            // Репетитор сам создаёт offer
             await negotiate(peerId, pc);
         } else if (window.role === 'student') {
-            // Ученик просит репетитора создать offer
-            console.log(`📞 Ученик отправляет need-offer для ${peerId}`);
+            console.log(`📞 Ученик отправляет need-offer для репетитора (${peerId})`);
             window.socket.emit('need-offer', { toPeerId: peerId });
         }
     };
@@ -351,8 +364,12 @@ function initWebRTC(socket, roomId, role) {
         }
         console.log(`👤 user-joined: ${peerId} (${remoteRole})`);
         
-        // Удаляем старый видео-элемент (на случай, если он застрял)
         removeVideoElement(peerId);
+        if (peerConnections[peerId]) {
+            console.log(`🧹 Закрываем старое соединение с ${peerId}`);
+            peerConnections[peerId].close();
+            delete peerConnections[peerId];
+        }
         
         const pc = createPeerConnection(peerId);
 
@@ -360,9 +377,9 @@ function initWebRTC(socket, roomId, role) {
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
 
-        // 🔥 ИСПРАВЛЕНО: только репетитор инициирует первый offer
+        // ТОЛЬКО РЕПЕТИТОР ИНИЦИИРУЕТ ПЕРВЫЙ OFFER
         if (role === 'tutor') {
-            // Небольшая задержка для стабилизации
+            console.log(`🎓 Репетитор: отправляю offer для ${peerId} (user-joined)`);
             setTimeout(async () => {
                 if (pc.signalingState === 'stable') {
                     await negotiate(peerId, pc);
@@ -377,32 +394,43 @@ function initWebRTC(socket, roomId, role) {
         
         let pc = peerConnections[from];
         if (!pc) {
+            console.log(`🔧 Создаём новое peer-соединение для ${from} (receive-offer)`);
             pc = createPeerConnection(from);
         }
 
-        // 🔥 ИСПРАВЛЕНО: добавляем локальные треки ПЕРЕД созданием answer
+        // 🔥 ВАЖНО: добавляем локальные треки ПЕРЕД созданием answer
         if (localStream) {
             const senders = pc.getSenders().map(s => s.track?.kind);
             localStream.getTracks().forEach(track => {
                 if (!senders.includes(track.kind)) {
                     pc.addTrack(track, localStream);
+                    console.log(`➕ Добавлен трек ${track.kind} для ${from} (при offer)`);
                 }
             });
         }
 
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('send-answer', { toPeerId: from, answer });
-        console.log(`📤 Answer отправлен для ${from}`);
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('send-answer', { toPeerId: from, answer });
+            console.log(`📤 Answer отправлен для ${from}`);
+        } catch (e) {
+            console.error(`❌ Ошибка receive-offer:`, e);
+        }
     });
 
     socket.on('receive-answer', ({ from, answer }) => {
         if (!from || !answer) return;
-        if (peerConnections[from]) {
-            peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer))
-                .then(() => console.log(`✅ Answer установлен для ${from}`))
-                .catch(e => console.error('❌ Ошибка установки answer:', e));
+        const pc = peerConnections[from];
+        if (pc) {
+            if (pc.signalingState === 'have-local-offer') {
+                pc.setRemoteDescription(new RTCSessionDescription(answer))
+                    .then(() => console.log(`✅ Answer установлен для ${from}`))
+                    .catch(e => console.error('❌ Ошибка установки answer:', e));
+            } else {
+                console.log(`⚠️ receive-answer: состояние ${pc.signalingState}, игнорируем`);
+            }
         }
     });
 
@@ -413,14 +441,19 @@ function initWebRTC(socket, roomId, role) {
         }
     });
 
-    // 🔥 ИСПРАВЛЕНО: обработчик need-offer для репетитора
+    // 🔥 ИСПРАВЛЕНО: обработчик need-offer с подробными логами
     socket.on('need-offer', ({ from }) => {
         if (window.role === 'tutor') {
-            console.log(`📞 Получен need-offer от ${from}, создаю offer`);
+            console.log(`📞 need-offer получен от ${from}, ищу peerConnection`);
             const pc = peerConnections[from];
-            if (pc && pc.signalingState === 'stable') {
+            if (pc) {
+                console.log(`✅ peerConnection найден, вызываю negotiate`);
                 negotiate(from, pc);
+            } else {
+                console.log(`❌ peerConnection для ${from} НЕ НАЙДЕН!`);
             }
+        } else {
+            console.log(`⏸️ need-offer: роль не репетитор (${window.role})`);
         }
     });
 
@@ -439,6 +472,7 @@ function initWebRTC(socket, roomId, role) {
     // АВТОСТАРТ ДЛЯ УЧЕНИКА
     if (role === 'student') {
         const startVideo = () => {
+            console.log('⏳ Автостарт видео ученика через 1.5с');
             setTimeout(() => {
                 startVideoCall(true);
             }, 1500);
