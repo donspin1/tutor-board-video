@@ -148,12 +148,6 @@ io.on('connection', (socket) => {
         io.to(toPeerId).emit('receive-ice-candidate', { from: socket.id, candidate });
     });
 
-    // 🔥 НОВОЕ: ученик просит репетитора пересоздать offer (после включения камеры)
-    socket.on('need-offer', ({ toPeerId }) => {
-        if (!toPeerId) return;
-        io.to(toPeerId).emit('need-offer', { from: socket.id });
-    });
-
     // ---------- ОТКЛЮЧЕНИЕ ----------
     socket.on('disconnect', () => {
         console.log('❌ Отключен:', socket.id);

@@ -1,22 +1,20 @@
-// webrtc.js — ФИНАЛЬНАЯ СТАБИЛЬНАЯ ВЕРСИЯ (репетитор видит ученика сразу, переподключение чистое, чёрного экрана нет)
+// webrtc.js — ФИНАЛЬНАЯ СТАБИЛЬНАЯ ВЕРСИЯ (ученик сам отправляет offer после включения камеры)
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
 let webrtcInitialized = false;
 
-// ---------- ПЕРЕГОВОРЫ (ТОЛЬКО ДЛЯ РЕПЕТИТОРА) ----------
-async function negotiate(peerId, pc) {
+// ---------- ПЕРЕГОВОРЫ (УНИВЕРСАЛЬНАЯ ФУНКЦИЯ) ----------
+async function createAndSendOffer(peerId, pc) {
     if (!pc || pc.signalingState !== 'stable') return;
-    // Только репетитор инициирует offer
-    if (window.role !== 'tutor') return;
-    console.log(`🔄 Negotiation with ${peerId} (${pc.signalingState})`);
     try {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         window.socket.emit('send-offer', { toPeerId: peerId, offer });
+        console.log(`📤 Offer отправлен для ${peerId}`);
     } catch (e) {
-        console.error('❌ Ошибка negotiate:', e);
+        console.error(`❌ Ошибка создания offer для ${peerId}:`, e);
     }
 }
 
@@ -47,9 +45,9 @@ async function startVideoCall(isSilent = false) {
                 }
             });
 
-            // 🔥 ЕСЛИ МЫ УЧЕНИК — просим репетитора пересоздать offer
-            if (window.role === 'student') {
-                window.socket.emit('need-offer', { toPeerId: peerId });
+            // 🔥 УЧЕНИК САМ ОТПРАВЛЯЕТ OFFER ПОСЛЕ ДОБАВЛЕНИЯ ТРЕКОВ
+            if (window.role === 'student' && pc.signalingState === 'stable') {
+                await createAndSendOffer(peerId, pc);
             }
         }
 
@@ -241,7 +239,7 @@ function makeDraggable(element, handle) {
     }
 }
 
-// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ (БЕЗ onnegotiationneeded) ----------
+// ---------- СОЗДАНИЕ PEER-СОЕДИНЕНИЯ ----------
 function createPeerConnection(peerId) {
     if (peerConnections[peerId]) {
         console.warn(`⚠️ Соединение с ${peerId} уже существует, закрываем старое`);
@@ -338,7 +336,7 @@ function initWebRTC(socket, roomId, role) {
         }
         console.log(`👤 user-joined: ${peerId} (${remoteRole})`);
         
-        // Полностью удаляем старый видео-элемент и соединение
+        // Удаляем старые следы
         removeVideoElement(peerId);
         if (peerConnections[peerId]) {
             peerConnections[peerId].close();
@@ -347,16 +345,16 @@ function initWebRTC(socket, roomId, role) {
         
         const pc = createPeerConnection(peerId);
 
-        // Если у репетитора уже включена камера, добавляем треки
+        // Если у репетитора уже есть камера, добавляем треки
         if (localStream) {
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
 
-        // ТОЛЬКО РЕПЕТИТОР ИНИЦИИРУЕТ ПЕРВЫЙ OFFER
+        // РЕПЕТИТОР ИНИЦИИРУЕТ ПЕРВЫЙ OFFER (установка соединения)
         if (role === 'tutor') {
             setTimeout(async () => {
                 if (pc.signalingState === 'stable') {
-                    await negotiate(peerId, pc);
+                    await createAndSendOffer(peerId, pc);
                 }
             }, 200);
         }
@@ -381,6 +379,7 @@ function initWebRTC(socket, roomId, role) {
             });
         }
 
+        // Устанавливаем remote description и создаём answer
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await pc.createAnswer();
@@ -388,18 +387,18 @@ function initWebRTC(socket, roomId, role) {
             socket.emit('send-answer', { toPeerId: from, answer });
             console.log(`📤 Answer отправлен для ${from}`);
         } catch (e) {
-            console.error('❌ Ошибка в receive-offer:', e);
+            console.error(`❌ Ошибка обработки offer от ${from}:`, e);
         }
     });
 
     socket.on('receive-answer', ({ from, answer }) => {
         if (!from || !answer) return;
-        if (peerConnections[from]) {
-            const pc = peerConnections[from];
+        const pc = peerConnections[from];
+        if (pc) {
             if (pc.signalingState === 'have-local-offer') {
                 pc.setRemoteDescription(new RTCSessionDescription(answer))
                     .then(() => console.log(`✅ Answer установлен для ${from}`))
-                    .catch(e => console.error('❌ Ошибка установки answer:', e));
+                    .catch(e => console.error(`❌ Ошибка установки answer от ${from}:`, e));
             } else {
                 console.warn(`⚠️ receive-answer: состояние ${pc.signalingState}, игнорируем`);
             }
@@ -410,17 +409,6 @@ function initWebRTC(socket, roomId, role) {
         if (!from || !candidate) return;
         if (peerConnections[from]) {
             peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
-        }
-    });
-
-    // 🔥 РЕПЕТИТОР ПОЛУЧАЕТ ЗАПРОС НА НОВЫЙ OFFER ОТ УЧЕНИКА
-    socket.on('need-offer', ({ from }) => {
-        if (window.role === 'tutor') {
-            console.log(`📞 need-offer от ${from}`);
-            const pc = peerConnections[from];
-            if (pc && pc.signalingState === 'stable') {
-                negotiate(from, pc);
-            }
         }
     });
 
