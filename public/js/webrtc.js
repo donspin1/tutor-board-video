@@ -1,4 +1,4 @@
-// webrtc.js — ПОЛНОСТЬЮ НЕЗАВИСИМАЯ СВЯЗЬ (финальная версия)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (автостарт ученика, независимое видео)
 
 let localStream = null;
 let peerConnections = {};
@@ -15,19 +15,21 @@ function initWebRTC(socket, roomId, role) {
 
     console.log(`📹 WebRTC: Инициализация для ${role}`);
 
-    // При входе сразу уведомляем сервер
+    // Немедленно присоединяемся к видеокомнате
     socket.emit('join-video-room', { roomId, peerId: socket.id, role });
 
-    // СОБЫТИЕ: Кто-то зашел в комнату
+    // --- Сокетные обработчики ---
     socket.on('user-joined', async ({ peerId, role: remoteRole }) => {
         console.log(`👤 Подключился: ${peerId} (${remoteRole})`);
         
         const pc = createPeerConnection(peerId);
 
+        // Если у нас уже есть локальный поток — добавляем треки
         if (localStream) {
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
 
+        // Инициатор: репетитор, либо ученик, если к нему присоединился репетитор
         if (window.role === 'tutor' || (window.role === 'student' && remoteRole === 'tutor')) {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
@@ -66,7 +68,16 @@ function initWebRTC(socket, roomId, role) {
         }
     });
 
+    // --- Навешиваем кнопки ---
     setupButtons();
+
+    // --- АВТОСТАРТ ДЛЯ УЧЕНИКА (без всплывающего окна ошибки) ---
+    if (window.role === 'student') {
+        // Небольшая задержка, чтобы сокет успел присоединиться
+        setTimeout(() => {
+            startVideoCall(true);
+        }, 500);
+    }
 }
 
 function setupButtons() {
@@ -103,7 +114,9 @@ function createPeerConnection(peerId) {
     };
 
     pc.ontrack = (e) => {
-        document.getElementById('video-panel').style.display = 'flex';
+        console.log("🎯 Получен удаленный трек от", peerId);
+        const panel = document.getElementById('video-panel');
+        if (panel) panel.style.display = 'flex';
         addVideoElement(peerId, e.streams[0], false);
     };
 
@@ -123,11 +136,11 @@ async function toggleVideoCall() {
     if (isVideoActive) {
         stopVideoCall();
     } else {
-        await startVideoCall();
+        await startVideoCall(false);
     }
 }
 
-async function startVideoCall() {
+async function startVideoCall(isSilent = false) {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         isVideoActive = true;
@@ -143,15 +156,23 @@ async function startVideoCall() {
 
         addVideoElement(window.socket.id, localStream, true);
 
+        // Добавляем треки во все существующие соединения (без дублирования)
         Object.values(peerConnections).forEach(pc => {
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            localStream.getTracks().forEach(track => {
+                const alreadyAdded = pc.getSenders().some(s => s.track === track);
+                if (!alreadyAdded) {
+                    pc.addTrack(track, localStream);
+                    console.log(`➕ Добавлен трек ${track.kind}`);
+                }
+            });
         });
 
         updateMicButton(true);
         updateCamButton(true);
         document.getElementById('tool-video')?.classList.add('active');
     } catch (err) {
-        alert('Ошибка доступа к камере/микрофону');
+        console.error('❌ Ошибка камеры:', err);
+        if (!isSilent) alert('Нет доступа к камере/микрофону');
     }
 }
 

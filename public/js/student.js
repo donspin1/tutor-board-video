@@ -1,4 +1,4 @@
-// student.js — ФИНАЛЬНАЯ ВЕРСИЯ
+// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (автостарт видео теперь в webrtc.js)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -23,14 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentOffsetX = 0;
     let currentOffsetY = 0;
 
+    // ---------- МАСШТАБИРОВАНИЕ ----------
     function applyCanvasState(stateJson) {
         originalWidth = stateJson.width;
         originalHeight = stateJson.height;
-
-        if (!originalWidth || !originalHeight) {
-            console.warn('Нет оригинальных размеров');
-            return;
-        }
+        if (!originalWidth || !originalHeight) return;
 
         canvas.loadFromJSON(stateJson, () => {
             const container = document.querySelector('.canvas-container');
@@ -41,23 +38,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const canvasWidth = canvas.getWidth();
             const canvasHeight = canvas.getHeight();
-
             const scaleX = canvasWidth / originalWidth;
             const scaleY = canvasHeight / originalHeight;
             currentScale = Math.min(scaleX, scaleY);
-
             currentOffsetX = (canvasWidth - originalWidth * currentScale) / 2;
             currentOffsetY = (canvasHeight - originalHeight * currentScale) / 2;
-
             canvas.viewportTransform = [currentScale, 0, 0, currentScale, currentOffsetX, currentOffsetY];
             canvas.renderAll();
         });
     }
 
+    // ---------- ПРЕОБРАЗОВАНИЕ КООРДИНАТ ----------
     function studentToOriginalCoords(obj) {
         if (!obj) return obj;
         const newObj = JSON.parse(JSON.stringify(obj));
-
         const scale = currentScale;
         const offsetX = currentOffsetX;
         const offsetY = currentOffsetY;
@@ -79,34 +73,26 @@ document.addEventListener('DOMContentLoaded', () => {
             newObj.path.forEach(cmd => {
                 for (let i = 1; i < cmd.length; i += 2) {
                     cmd[i] = transformX(cmd[i]);
-                    if (i + 1 < cmd.length) {
-                        cmd[i + 1] = transformY(cmd[i + 1]);
-                    }
+                    if (i + 1 < cmd.length) cmd[i + 1] = transformY(cmd[i + 1]);
                 }
             });
         }
-
         return newObj;
     }
 
     function resizeCanvas() {
         const container = document.querySelector('.canvas-container');
         if (!container) return;
-        
         canvas.setWidth(container.clientWidth);
         canvas.setHeight(container.clientHeight);
-
         if (originalWidth && originalHeight) {
             const canvasWidth = canvas.getWidth();
             const canvasHeight = canvas.getHeight();
-
             const scaleX = canvasWidth / originalWidth;
             const scaleY = canvasHeight / originalHeight;
             currentScale = Math.min(scaleX, scaleY);
-
             currentOffsetX = (canvasWidth - originalWidth * currentScale) / 2;
             currentOffsetY = (canvasHeight - originalHeight * currentScale) / 2;
-
             canvas.viewportTransform = [currentScale, 0, 0, currentScale, currentOffsetX, currentOffsetY];
         }
         canvas.renderAll();
@@ -124,14 +110,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTool = 'pencil';
     let hasAccess = true;
 
+    // ---------- UI ----------
     const roomIdEl = document.getElementById('room-id');
     if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
-
     const usernameEl = document.getElementById('username-display');
     if (usernameEl) usernameEl.innerHTML = `<i class="fas fa-user-graduate"></i> ${userName}`;
-
     const accessIndicator = document.getElementById('access-indicator');
 
+    // ---------- ИНСТРУМЕНТЫ ----------
     const pencilBtn = document.getElementById('tool-pencil');
     const eraserBtn = document.getElementById('tool-eraser');
     const exitBtn = document.getElementById('exit-btn');
@@ -159,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     pencilBtn?.classList.add('active');
 
+    // ---------- РИСОВАНИЕ (УЧЕНИК) ----------
     canvas.on('path:created', (e) => {
         if (!hasAccess) {
             canvas.remove(e.path);
@@ -166,7 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         e.path.set({ id: 'student-' + Date.now() });
-        
         const pathData = e.path.toObject(['id']);
         const originalCoordsData = studentToOriginalCoords(pathData);
         socket.emit('drawing-data', { roomId, object: originalCoordsData });
@@ -182,17 +168,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ---------- БЛОКИРОВКА ДОСТУПА ----------
     socket.on('admin-lock-status', (locked) => {
         hasAccess = !locked;
         canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
-
         document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
             if (!['exit-btn', 'tool-video'].includes(btn.id)) {
                 btn.style.opacity = hasAccess ? '1' : '0.5';
                 btn.style.pointerEvents = hasAccess ? 'auto' : 'none';
             }
         });
-
         if (accessIndicator) {
             if (hasAccess) {
                 accessIndicator.style.background = 'var(--success)';
@@ -205,6 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification(hasAccess ? 'Доступ открыт' : 'Доступ закрыт');
     });
 
+    // ---------- КОМНАТА ----------
     socket.on('room-not-found', () => {
         alert('Комната не найдена. Уточните ID у репетитора.');
         window.location.href = '/';
@@ -213,9 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('join-room', roomId, 'student');
 
     socket.on('init-canvas', (data) => {
-        if (data.canvasJson) {
-            applyCanvasState(data.canvasJson);
-        }
+        if (data.canvasJson) applyCanvasState(data.canvasJson);
     });
 
     socket.on('canvas-state', ({ canvasJson }) => {
@@ -244,11 +228,12 @@ document.addEventListener('DOMContentLoaded', () => {
         originalHeight = null;
     });
 
-    // ВИДЕО – ТОЛЬКО ИНИЦИАЛИЗАЦИЯ, БЕЗ АВТОСТАРТА
+    // ---------- ВИДЕО (ТОЛЬКО ИНИЦИАЛИЗАЦИЯ) ----------
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'student');
     }
 
+    // ---------- УВЕДОМЛЕНИЯ ----------
     function showNotification(msg, duration = 3000) {
         const notif = document.getElementById('notification');
         if (notif) {
