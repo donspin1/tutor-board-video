@@ -11,21 +11,35 @@ async function initWebRTC(socket, roomId, role) {
     window.role = role;
 
     try {
-        // Шаг 1: Получаем ТОЛЬКО микрофон (это сработает почти всегда)
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        console.log("🎤 Микрофон получен");
+        // ЗАПРАШИВАЕМ ВСЁ СРАЗУ (это решает проблему со звуком)
+        // Но видео-трек сразу ставим в режим 'disabled'
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        
+        // По умолчанию камера выключена
+        localStream.getVideoTracks().forEach(track => track.enabled = false);
+        isCameraActive = false;
+
+        console.log("🎤 Связь инициализирована (Audio + Muted Video)");
 
         const panel = document.getElementById('video-panel');
         if (panel) panel.style.display = 'flex';
         
-        // Отрисовываем себя
+        // Отрисовываем себя (покажем темный экран, так как видео выключено)
         addVideoElement('local', localStream, true);
+        
         updateMicUI(true); 
+        updateCamUI(false);
     } catch (err) {
-        console.error('Ошибка доступа к микрофону:', err);
+        console.error('Ошибка доступа к медиа:', err);
+        // Если камеры нет вообще, пробуем только микрофон
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            addVideoElement('local', localStream, true);
+        } catch (e) {
+            console.error('Даже микрофон не доступен');
+        }
     }
 
-    // Входим в комнату
     socket.emit('join-video-room', { roomId, peerId: socket.id, role });
 
     socket.on('user-joined', ({ peerId }) => {
@@ -71,13 +85,13 @@ function createPeerConnection(peerId) {
     });
     peerConnections[peerId] = pc;
 
-    // Добавляем все имеющиеся треки (сейчас это только аудио)
+    // Сразу добавляем все треки из localStream
     if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
 
     pc.ontrack = (e) => {
-        console.log("🎯 Получен поток от партнера:", peerId);
+        console.log("🎯 Поток от партнера:", peerId);
         addVideoElement(peerId, e.streams[0], false);
     };
 
@@ -87,7 +101,6 @@ function createPeerConnection(peerId) {
         }
     };
 
-    // Важно для корректного добавления видео позже
     pc.onnegotiationneeded = async () => {
         try {
             if (pc.signalingState !== 'stable') return;
@@ -101,51 +114,23 @@ function createPeerConnection(peerId) {
 }
 
 // ---------- 3. УПРАВЛЕНИЕ КАМЕРОЙ ----------
-async function toggleCamera() {
-    try {
-        if (!isCameraActive) {
-            // ВКЛЮЧАЕМ: Запрашиваем видео отдельно
-            const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            const videoTrack = tempStream.getVideoTracks()[0];
+function toggleCamera() {
+    if (!localStream) return;
+    
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack) {
+        isCameraActive = !isCameraActive;
+        videoTrack.enabled = isCameraActive; // Включаем/выключаем сам поток данных
 
-            // Добавляем трек в наш основной localStream
-            localStream.addTrack(videoTrack);
-
-            // Обновляем трек у всех подключенных пиров
-            for (let pc of Object.values(peerConnections)) {
-                const senders = pc.getSenders();
-                const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-                
-                if (videoSender) {
-                    await videoSender.replaceTrack(videoTrack);
-                } else {
-                    pc.addTrack(videoTrack, localStream);
-                }
-            }
-            isCameraActive = true;
-        } else {
-            // ВЫКЛЮЧАЕМ
-            const videoTrack = localStream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.stop(); // Останавливаем камеру (индикатор погаснет)
-                localStream.removeTrack(videoTrack);
-                
-                // Уведомляем партнеров (заменяем трек на null)
-                for (let pc of Object.values(peerConnections)) {
-                    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) await sender.replaceTrack(null);
-                }
-            }
-            isCameraActive = false;
+        // Чтобы у СЕБЯ видеть темный экран или видео
+        const localVideo = document.querySelector(`#container-local video`);
+        if (localVideo) {
+            localVideo.srcObject = isCameraActive ? localStream : null;
         }
 
-        // Обновляем интерфейс
-        addVideoElement('local', localStream, true);
         updateCamUI(isCameraActive);
-
-    } catch (err) {
-        console.error("Ошибка камеры:", err);
-        alert("Не удалось запустить камеру. Проверьте разрешения.");
+    } else {
+        alert("Камера не найдена в системе");
     }
 }
 
@@ -158,12 +143,10 @@ function toggleMic() {
     }
 }
 
-// ---------- 4. ОТРИСОВКА (ФИКС ЗАВИСАНИЯ) ----------
+// ---------- 4. ОТРИСОВКА ----------
 function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
-
-    if (!isLocal && peerId === window.socket.id) return;
 
     let container = document.getElementById(`container-${peerId}`);
     if (!container) {
@@ -187,15 +170,13 @@ function addVideoElement(peerId, stream, isLocal = false) {
 
     const videoEl = container.querySelector('video');
     
-    // Если есть видео-треки и они не остановлены
-    const hasVideo = stream && stream.getVideoTracks().some(t => t.readyState === 'live');
-
-    if (hasVideo) {
+    // Если это локальное видео и оно выключено — не вешаем stream, чтобы был черный фон
+    if (isLocal && !isCameraActive) {
+        videoEl.srcObject = null;
+    } else {
         if (videoEl.srcObject !== stream) {
             videoEl.srcObject = stream;
         }
-    } else {
-        videoEl.srcObject = null; // Черный экран (благодаря CSS)
     }
 }
 
@@ -205,12 +186,9 @@ function removeVideoElement(peerId) {
 
 // ---------- 5. КНОПКИ ----------
 function setupButtons() {
-    const micBtn = document.getElementById('call-mic');
-    if (micBtn) micBtn.onclick = toggleMic;
-
-    const camBtn = document.getElementById('call-cam');
-    if (camBtn) camBtn.onclick = toggleCamera;
-
+    document.getElementById('call-mic').onclick = toggleMic;
+    document.getElementById('call-cam').onclick = toggleCamera;
+    
     const leave = () => { window.location.href = '/'; };
     if (document.getElementById('call-end')) document.getElementById('call-end').onclick = leave;
     if (document.getElementById('exit-btn')) document.getElementById('exit-btn').onclick = leave;
