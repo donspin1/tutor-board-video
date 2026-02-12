@@ -148,6 +148,13 @@ io.on('connection', (socket) => {
         io.to(toPeerId).emit('receive-ice-candidate', { from: socket.id, candidate });
     });
 
+    // 🔥 НОВЫЙ ОБРАБОТЧИК: ученик запрашивает offer у репетитора
+    socket.on('need-offer', ({ toPeerId }) => {
+        if (!toPeerId) return;
+        io.to(toPeerId).emit('need-offer', { from: socket.id });
+        console.log(`📞 need-offer от ${socket.id} к ${toPeerId}`);
+    });
+
     // ---------- ОТКЛЮЧЕНИЕ ----------
     socket.on('disconnect', () => {
         console.log('❌ Отключен:', socket.id);
