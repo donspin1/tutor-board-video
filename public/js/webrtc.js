@@ -1,11 +1,10 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (репетитор видит ученика без своей камеры)
+// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (оба участника видят видео при включении)
 
 let localStream = null;
 let peerConnections = {};
 let isVideoActive = false;
 let webrtcInitialized = false;
 
-// ---------- ИНИЦИАЛИЗАЦИЯ ----------
 function initWebRTC(socket, roomId, role) {
     if (webrtcInitialized) {
         console.log('⚠️ WebRTC уже инициализирован, пропускаем');
@@ -19,15 +18,12 @@ function initWebRTC(socket, roomId, role) {
     console.log(`📹 WebRTC инициализирован для ${role}`);
     webrtcInitialized = true;
 
-    // Кнопка видеозвонка
     const videoBtn = document.getElementById('tool-video');
     if (videoBtn) {
         videoBtn.removeEventListener('click', toggleVideoCall);
         videoBtn.addEventListener('click', toggleVideoCall);
-        console.log('✅ Кнопка video привязана');
     }
 
-    // Кнопки управления
     const toggleMic = document.getElementById('toggle-mic');
     if (toggleMic) {
         toggleMic.removeEventListener('click', toggleMicrophone);
@@ -52,26 +48,20 @@ function initWebRTC(socket, roomId, role) {
         toggleScreen.addEventListener('click', startScreenShare);
     }
 
-    // 👇 РЕШЕНИЕ ПРОБЛЕМЫ 1: Репетитор сразу присоединяется к видеокомнате
-    if (role === 'tutor') {
-        socket.emit('join-video-room', {
-            roomId: roomId,
-            peerId: socket.id,
-            role: role
-        });
-        console.log('📡 Репетитор присоединился к видеокомнате (без камеры)');
-    }
+    // 👇 ОБА УЧАСТНИКА СРАЗУ ПРИСОЕДИНЯЮТСЯ К ВИДЕОКОМНАТЕ
+    socket.emit('join-video-room', {
+        roomId: roomId,
+        peerId: socket.id,
+        role: role
+    });
+    console.log(`📡 ${role} присоединился к видеокомнате`);
 
     setupSocketListeners();
 }
 
-// ---------- ВКЛ/ВЫКЛ ВИДЕОЗВОНКА ----------
 async function toggleVideoCall() {
-    if (!isVideoActive) {
-        await startVideoCall();
-    } else {
-        stopVideoCall();
-    }
+    if (!isVideoActive) await startVideoCall();
+    else stopVideoCall();
 }
 
 async function startVideoCall() {
@@ -102,14 +92,7 @@ async function startVideoCall() {
 
         addLocalVideo();
         
-        // Присоединяемся к видеокомнате (если ещё не присоединились)
-        window.socket.emit('join-video-room', {
-            roomId: window.roomId,
-            peerId: window.socket.id,
-            role: window.role
-        });
-        
-        // 👇 Добавляем локальные треки во все существующие peer-соединения
+        // 👇 Добавляем треки во все существующие peer-соединения
         Object.values(peerConnections).forEach(pc => {
             localStream.getTracks().forEach(track => {
                 pc.addTrack(track, localStream);
@@ -158,7 +141,6 @@ function stopVideoCall() {
     updateCamButton(false);
 }
 
-// ---------- ОТОБРАЖЕНИЕ ВИДЕО ----------
 function addLocalVideo() {
     if (!localStream) return;
     addVideoElement(window.socket.id, localStream, true);
@@ -200,7 +182,6 @@ function removeVideoElement(peerId) {
     if (el) el.remove();
 }
 
-// ---------- УПРАВЛЕНИЕ МИКРОФОНОМ И КАМЕРОЙ ----------
 function toggleMicrophone() {
     if (!localStream) {
         startVideoCall().then(() => {
@@ -257,7 +238,6 @@ function updateCamButton(enabled) {
     }
 }
 
-// ---------- ДЕМОНСТРАЦИЯ ЭКРАНА ----------
 async function startScreenShare() {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -294,7 +274,6 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- ПЕРЕТАСКИВАНИЕ ----------
 function makeDraggable(element, handle) {
     if (!element || !handle) return;
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
@@ -335,14 +314,12 @@ function makeDraggable(element, handle) {
     }
 }
 
-// ---------- ОБРАБОТКА СИГНАЛОВ WEBRTC ----------
 function setupSocketListeners() {
     const socket = window.socket;
 
     socket.on('user-joined', async ({ peerId, role }) => {
         console.log(`👤 user joined: ${peerId} (${role})`);
 
-        // Всегда создаём peer-соединение, даже если нет локального потока
         const pc = new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -351,7 +328,6 @@ function setupSocketListeners() {
         });
         peerConnections[peerId] = pc;
 
-        // Если локальный поток есть — добавляем треки
         if (localStream) {
             localStream.getTracks().forEach(track => {
                 pc.addTrack(track, localStream);
@@ -372,13 +348,8 @@ function setupSocketListeners() {
             }
         };
 
-        // Инициатором соединения должен быть тот, у кого роль 'student' (ученик)
-        // Упростим: тот, кто получает 'user-joined', создаёт offer, если его роль 'tutor'
-        // Но чтобы работало в обе стороны, сделаем так:
-        // Если мы репетитор и к нам присоединился ученик — создаём offer
-        // Если мы ученик и к нам присоединился репетитор — создаём offer
-        // На самом деле достаточно, чтобы offer создавал тот, у кого роль 'tutor' (репетитор)
-        if (window.role === 'tutor') {
+        // 👇 Всегда создаём offer, если мы — репетитор, или если мы — ученик и к нам присоединился репетитор
+        if (window.role === 'tutor' || (window.role === 'student' && role === 'tutor')) {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             socket.emit('send-offer', { toPeerId: peerId, offer });
@@ -389,7 +360,6 @@ function setupSocketListeners() {
     socket.on('receive-offer', async ({ from, offer }) => {
         console.log(`📩 Получен offer от ${from}`);
 
-        // Если у нас нет локального потока — создаём peer-соединение без отправки видео
         const pc = peerConnections[from] || new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -398,7 +368,6 @@ function setupSocketListeners() {
         });
         peerConnections[from] = pc;
 
-        // Если есть локальный поток — добавляем треки
         if (localStream) {
             localStream.getTracks().forEach(track => {
                 pc.addTrack(track, localStream);
