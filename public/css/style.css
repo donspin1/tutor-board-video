@@ -1,4 +1,4 @@
-/* ===== TutorBoard — ФИНАЛЬНЫЕ СТИЛИ (без заголовка, видео-панель компактная) ===== */
+/* ===== TutorBoard — ФИНАЛЬНЫЕ СТИЛИ (без заголовка, компактное видео) ===== */
 
 :root {
     --primary: #6366f1;
@@ -23,7 +23,6 @@ body {
     overflow: hidden;
 }
 
-/* ===== ДЕСКТОПНАЯ ВЕРСИЯ ===== */
 .board-container {
     display: flex;
     height: 100vh;
@@ -150,12 +149,12 @@ body {
     transform: scale(1.05);
 }
 
-/* ===== ВИДЕО-ПАНЕЛЬ (ДЕСКТОП) — БЕЗ ЗАГОЛОВКА, КОМПАКТНАЯ ===== */
+/* ===== ВИДЕО-ПАНЕЛЬ – БЕЗ ЗАГОЛОВКА, КОМПАКТНАЯ ===== */
 .video-panel {
     position: absolute;
     top: 20px;
     right: 20px;
-    width: 140px;               /* ещё меньше */
+    width: 140px;
     background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(10px);
     border-radius: 12px;
@@ -171,7 +170,7 @@ body {
 
 .video-header {
     display: flex;
-    justify-content: flex-end;  /* кнопки прижаты вправо */
+    justify-content: flex-end;
     align-items: center;
     cursor: move;
     user-select: none;
@@ -236,7 +235,6 @@ video {
     font-size: 8px;
 }
 
-/* ===== ДОСКА ===== */
 .canvas-area {
     flex: 1;
     background: white;
@@ -265,7 +263,6 @@ video {
     display: block;
 }
 
-/* ===== ПАНЕЛЬ СВОЙСТВ ===== */
 .properties-panel {
     position: absolute;
     right: 20px;
@@ -329,7 +326,6 @@ video {
     width: 100%;
 }
 
-/* ===== УВЕДОМЛЕНИЯ ===== */
 .notification {
     position: fixed;
     top: 20px;
@@ -352,7 +348,7 @@ video {
     transform: translateX(0);
 }
 
-/* ===== МОБИЛЬНАЯ АДАПТАЦИЯ — КОМПАКТНАЯ ПАНЕЛЬ ===== */
+/* ===== МОБИЛЬНАЯ АДАПТАЦИЯ ===== */
 @media (max-width: 900px) {
     .board-container {
         flex-direction: column;

@@ -12,7 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // ---------- CANVAS ----------
     const canvas = new fabric.Canvas('canvas', { 
         backgroundColor: 'white', 
         selection: false 
@@ -24,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentOffsetX = 0;
     let currentOffsetY = 0;
 
-    // ---------- МАСШТАБИРОВАНИЕ И ЦЕНТРИРОВАНИЕ (viewportTransform) ----------
     function applyCanvasState(stateJson) {
         originalWidth = stateJson.width;
         originalHeight = stateJson.height;
@@ -56,7 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ---------- ПРЕОБРАЗОВАНИЕ КООРДИНАТ В ОРИГИНАЛЬНУЮ СИСТЕМУ РЕПЕТИТОРА ----------
     function studentToOriginalCoords(obj) {
         if (!obj) return obj;
         const newObj = JSON.parse(JSON.stringify(obj));
@@ -127,7 +124,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTool = 'pencil';
     let hasAccess = true;
 
-    // ---------- UI ----------
     const roomIdEl = document.getElementById('room-id');
     if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
 
@@ -136,7 +132,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const accessIndicator = document.getElementById('access-indicator');
 
-    // ---------- ИНСТРУМЕНТЫ ----------
     const pencilBtn = document.getElementById('tool-pencil');
     const eraserBtn = document.getElementById('tool-eraser');
     const exitBtn = document.getElementById('exit-btn');
@@ -164,7 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     pencilBtn?.classList.add('active');
 
-    // ---------- РИСОВАНИЕ (УЧЕНИК) ----------
     canvas.on('path:created', (e) => {
         if (!hasAccess) {
             canvas.remove(e.path);
@@ -188,7 +182,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ---------- БЛОКИРОВКА ДОСТУПА ----------
     socket.on('admin-lock-status', (locked) => {
         hasAccess = !locked;
         canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
@@ -212,13 +205,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification(hasAccess ? 'Доступ открыт' : 'Доступ закрыт');
     });
 
-    // ---------- НЕСУЩЕСТВУЮЩАЯ КОМНАТА ----------
     socket.on('room-not-found', () => {
         alert('Комната не найдена. Уточните ID у репетитора.');
         window.location.href = '/';
     });
 
-    // ---------- СИНХРОНИЗАЦИЯ ДОСКИ ----------
     socket.emit('join-room', roomId, 'student');
 
     socket.on('init-canvas', (data) => {
@@ -253,12 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
         originalHeight = null;
     });
 
-    // ---------- ВИДЕО — ТОЛЬКО ИНИЦИАЛИЗАЦИЯ, БЕЗ АВТОСТАРТА ----------
+    // ВИДЕО – ТОЛЬКО ИНИЦИАЛИЗАЦИЯ, БЕЗ АВТОСТАРТА
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'student');
     }
 
-    // ---------- УВЕДОМЛЕНИЯ ----------
     function showNotification(msg, duration = 3000) {
         const notif = document.getElementById('notification');
         if (notif) {
