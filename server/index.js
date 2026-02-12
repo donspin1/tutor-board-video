@@ -27,7 +27,13 @@ io.on('connection', (socket) => {
         console.log(`📥 ${role} вход в ${roomId}`);
         if (role === 'tutor') {
             if (!rooms.has(roomId)) {
-                rooms.set(roomId, { objects: [], locked: false, width: null, height: null });
+                rooms.set(roomId, { 
+                    objects: [], 
+                    locked: false, 
+                    width: null,
+                    height: null 
+                });
+                console.log(`🆕 Комната ${roomId} создана`);
             }
             socket.join(roomId);
             const room = rooms.get(roomId);
@@ -71,7 +77,7 @@ io.on('connection', (socket) => {
 
     socket.on('drawing-data', ({ roomId, object }) => {
         const room = rooms.get(roomId);
-        if (room) {
+        if (room && object) {
             const index = room.objects.findIndex(o => o.id === object.id);
             if (index !== -1) room.objects[index] = object;
             else room.objects.push(object);
@@ -105,26 +111,31 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ---------- ВИДЕО (WebRTC) ----------
+    // ---------- ВИДЕО ----------
     socket.on('join-video-room', ({ roomId, peerId, role }) => {
+        if (!roomId || !peerId || !role) return; // защита
         socket.join(`video-${roomId}`);
         socket.to(`video-${roomId}`).emit('user-joined', { peerId, role });
     });
 
     socket.on('leave-video-room', ({ roomId, peerId }) => {
+        if (!roomId || !peerId) return;
         socket.leave(`video-${roomId}`);
         socket.to(`video-${roomId}`).emit('user-left', peerId);
     });
 
     socket.on('send-offer', ({ toPeerId, offer }) => {
+        if (!toPeerId || !offer) return;
         io.to(toPeerId).emit('receive-offer', { from: socket.id, offer });
     });
 
     socket.on('send-answer', ({ toPeerId, answer }) => {
+        if (!toPeerId || !answer) return;
         io.to(toPeerId).emit('receive-answer', { from: socket.id, answer });
     });
 
     socket.on('send-ice-candidate', ({ toPeerId, candidate }) => {
+        if (!toPeerId || !candidate) return;
         io.to(toPeerId).emit('receive-ice-candidate', { from: socket.id, candidate });
     });
 
