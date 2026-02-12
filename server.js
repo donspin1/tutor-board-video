@@ -7,12 +7,21 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(path.join(__dirname, "../public")));
+const publicPath = path.join(__dirname, "../public");
 
-app.get("/room/:id", (req, res) => {
-  res.sendFile(path.join(__dirname, "../public/room.html"));
+app.use(express.static(publicPath));
+
+/* ✅ Главная страница */
+app.get("/", (req, res) => {
+  res.sendFile(path.join(publicPath, "index.html"));
 });
 
+/* ✅ Комнаты */
+app.get("/room/:id", (req, res) => {
+  res.sendFile(path.join(publicPath, "room.html"));
+});
+
+/* ✅ Socket */
 io.on("connection", (socket) => {
   socket.on("join-room", (roomId) => {
     socket.join(roomId);
