@@ -17,55 +17,56 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-const rooms = new Map();
+const rooms = new Map(); // roomId -> { participants: Map<socketId, role>, objects, locked, width, height }
 
 io.on('connection', (socket) => {
     console.log('🔌 Подключен:', socket.id);
-    socket.videoRooms = [];
 
     // ---------- ДОСКА ----------
     socket.on('join-room', (roomId, role) => {
         console.log(`📥 ${role} вход в ${roomId}`);
-        if (role === 'tutor') {
-            if (!rooms.has(roomId)) {
-                rooms.set(roomId, { 
-                    objects: [], 
-                    locked: false, 
-                    width: null,
-                    height: null 
-                });
-                console.log(`🆕 Комната ${roomId} создана`);
-            }
-            socket.join(roomId);
-            const room = rooms.get(roomId);
-            socket.emit('init-canvas', {
-                canvasJson: {
-                    objects: room.objects || [],
-                    width: room.width,
-                    height: room.height,
-                    background: 'white'
-                },
-                locked: room.locked
+        
+        // Инициализация комнаты
+        if (!rooms.has(roomId)) {
+            rooms.set(roomId, {
+                participants: new Map(),
+                objects: [],
+                locked: false,
+                width: null,
+                height: null
             });
-        } else if (role === 'student') {
-            if (!rooms.has(roomId)) {
-                socket.emit('room-not-found', roomId);
-                return;
-            }
-            socket.join(roomId);
-            const room = rooms.get(roomId);
-            socket.emit('init-canvas', {
-                canvasJson: {
-                    objects: room.objects || [],
-                    width: room.width,
-                    height: room.height,
-                    background: 'white'
-                },
-                locked: room.locked
-            });
+            console.log(`🆕 Комната ${roomId} создана`);
         }
+        
+        const room = rooms.get(roomId);
+        
+        // Добавляем участника
+        room.participants.set(socket.id, { role, joinedAt: Date.now() });
+        socket.join(roomId);
+        
+        // 1. Отправляем новому участнику список ВСЕХ текущих участников
+        const participants = Array.from(room.participants.entries())
+            .filter(([id]) => id !== socket.id)
+            .map(([id, data]) => ({ peerId: id, role: data.role }));
+        
+        socket.emit('room-participants', participants);
+        
+        // 2. Оповещаем остальных, что новый участник присоединился
+        socket.to(roomId).emit('user-joined', { peerId: socket.id, role });
+        
+        // 3. Отправляем состояние доски
+        socket.emit('init-canvas', {
+            canvasJson: {
+                objects: room.objects || [],
+                width: room.width,
+                height: room.height,
+                background: 'white'
+            },
+            locked: room.locked
+        });
     });
 
+    // ---------- ДОСКА ----------
     socket.on('canvas-state', ({ roomId, canvasJson }) => {
         const room = rooms.get(roomId);
         if (room) {
@@ -112,54 +113,17 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ---------- ВИДЕО ----------
-    socket.on('join-video-room', ({ roomId, peerId, role }) => {
-        if (!roomId || !peerId || !role) return;
-        const videoRoom = `video-${roomId}`;
-        socket.join(videoRoom);
-        if (!socket.videoRooms.includes(videoRoom)) {
-            socket.videoRooms.push(videoRoom);
-        }
-
-        // 🔥 НОВОЕ: отправляем новому участнику список уже присутствующих пиров
-        const roomSockets = io.sockets.adapter.rooms.get(videoRoom);
-        if (roomSockets) {
-            const participants = Array.from(roomSockets)
-                .filter(id => id !== socket.id) // исключаем себя
-                .map(id => ({ peerId: id, role: getRoleBySocketId(id) })); // нужно как-то получить роль; упростим: будем передавать только peerId, а роль узнаем позже?
-            // Проще передать только peerId, а роль определим по тому, что репетитор — единственный, кто не ученик? Нет, могут быть несколько учеников.
-            // Решение: будем передавать peerId и role, которые были переданы при join-video-room.
-            // Для этого нужно хранить роли сокетов. Временно передадим только peerId, а клиент при создании PC будет считать, что это репетитор (если он ученик) или ученик (если он репетитор) — но это ненадёжно.
-            // Лучше хранить роли в памяти сервера.
-            if (!global.socketRoles) global.socketRoles = new Map();
-            global.socketRoles.set(socket.id, role);
-            const participantList = Array.from(roomSockets)
-                .filter(id => id !== socket.id)
-                .map(id => ({ peerId: id, role: global.socketRoles.get(id) }));
-            socket.emit('room-participants', participantList);
-        }
-
-        socket.to(videoRoom).emit('user-joined', { peerId, role });
-        console.log(`🎥 ${role} (${peerId}) присоединился к ${videoRoom}`);
-    });
-
-    socket.on('leave-video-room', ({ roomId, peerId }) => {
-        if (!roomId || !peerId) return;
-        const videoRoom = `video-${roomId}`;
-        socket.leave(videoRoom);
-        socket.videoRooms = socket.videoRooms.filter(vr => vr !== videoRoom);
-        socket.to(videoRoom).emit('user-left', peerId);
-        console.log(`🚪 ${peerId} покинул ${videoRoom}`);
-    });
-
+    // ---------- ВИДЕО (СИГНАЛИНГ) ----------
     socket.on('send-offer', ({ toPeerId, offer }) => {
         if (!toPeerId || !offer) return;
         io.to(toPeerId).emit('receive-offer', { from: socket.id, offer });
+        console.log(`📤 offer от ${socket.id} -> ${toPeerId}`);
     });
 
     socket.on('send-answer', ({ toPeerId, answer }) => {
         if (!toPeerId || !answer) return;
         io.to(toPeerId).emit('receive-answer', { from: socket.id, answer });
+        console.log(`📤 answer от ${socket.id} -> ${toPeerId}`);
     });
 
     socket.on('send-ice-candidate', ({ toPeerId, candidate }) => {
@@ -170,11 +134,15 @@ io.on('connection', (socket) => {
     // ---------- ОТКЛЮЧЕНИЕ ----------
     socket.on('disconnect', () => {
         console.log('❌ Отключен:', socket.id);
-        socket.videoRooms.forEach(videoRoom => {
-            socket.to(videoRoom).emit('user-left', socket.id);
-            console.log(`📢 user-left для ${socket.id} в ${videoRoom}`);
+        
+        // Удаляем участника из всех комнат
+        rooms.forEach((room, roomId) => {
+            if (room.participants.has(socket.id)) {
+                room.participants.delete(socket.id);
+                io.to(roomId).emit('user-left', socket.id);
+                console.log(`👋 user-left: ${socket.id} из ${roomId}`);
+            }
         });
-        socket.videoRooms = [];
     });
 });
 
