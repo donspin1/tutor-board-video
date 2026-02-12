@@ -1,4 +1,4 @@
-// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (viewportTransform)
+// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (передача рисунков в координатах репетитора)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -20,10 +20,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let originalWidth = null;
     let originalHeight = null;
+    let currentScale = 1;
+    let currentOffsetX = 0;
+    let currentOffsetY = 0;
 
     // ---------- ФУНКЦИЯ МАСШТАБИРОВАНИЯ ЧЕРЕЗ VIEWPORT ----------
     function applyCanvasState(stateJson) {
-        // Сохраняем оригинальные размеры
         originalWidth = stateJson.width;
         originalHeight = stateJson.height;
 
@@ -32,9 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Загружаем объекты в оригинальных координатах
         canvas.loadFromJSON(stateJson, () => {
-            // Устанавливаем размер canvas равным размеру контейнера
             const container = document.querySelector('.canvas-container');
             if (container) {
                 canvas.setWidth(container.clientWidth);
@@ -44,23 +44,54 @@ document.addEventListener('DOMContentLoaded', () => {
             const canvasWidth = canvas.getWidth();
             const canvasHeight = canvas.getHeight();
 
-            // Вычисляем масштаб, чтобы весь оригинальный холст поместился
             const scaleX = canvasWidth / originalWidth;
             const scaleY = canvasHeight / originalHeight;
-            const scale = Math.min(scaleX, scaleY); // uniform scale
+            currentScale = Math.min(scaleX, scaleY);
 
-            // Вычисляем смещение для центрирования
-            const offsetX = (canvasWidth - originalWidth * scale) / 2;
-            const offsetY = (canvasHeight - originalHeight * scale) / 2;
+            currentOffsetX = (canvasWidth - originalWidth * currentScale) / 2;
+            currentOffsetY = (canvasHeight - originalHeight * currentScale) / 2;
 
-            // Устанавливаем viewportTransform
-            canvas.viewportTransform = [scale, 0, 0, scale, offsetX, offsetY];
-            
+            canvas.viewportTransform = [currentScale, 0, 0, currentScale, currentOffsetX, currentOffsetY];
             canvas.renderAll();
         });
     }
 
-    // Изменение размера canvas при изменении размера окна
+    // ---------- ПРЕОБРАЗОВАНИЕ КООРДИНАТ ИЗ ЭКРАНА УЧЕНИКА В ОРИГИНАЛЬНЫЕ ----------
+    function studentToOriginalCoords(obj) {
+        if (!obj) return obj;
+        const newObj = JSON.parse(JSON.stringify(obj));
+
+        const scale = currentScale;
+        const offsetX = currentOffsetX;
+        const offsetY = currentOffsetY;
+
+        function transformX(x) { return (x - offsetX) / scale; }
+        function transformY(y) { return (y - offsetY) / scale; }
+
+        if (newObj.left !== undefined) newObj.left = transformX(newObj.left);
+        if (newObj.top !== undefined) newObj.top = transformY(newObj.top);
+        if (newObj.x1 !== undefined) newObj.x1 = transformX(newObj.x1);
+        if (newObj.x2 !== undefined) newObj.x2 = transformX(newObj.x2);
+        if (newObj.y1 !== undefined) newObj.y1 = transformY(newObj.y1);
+        if (newObj.y2 !== undefined) newObj.y2 = transformY(newObj.y2);
+        if (newObj.width !== undefined) newObj.width = newObj.width / scale;
+        if (newObj.height !== undefined) newObj.height = newObj.height / scale;
+        if (newObj.radius !== undefined) newObj.radius = newObj.radius / scale;
+        
+        if (newObj.path) {
+            newObj.path.forEach(cmd => {
+                for (let i = 1; i < cmd.length; i += 2) {
+                    cmd[i] = transformX(cmd[i]);
+                    if (i + 1 < cmd.length) {
+                        cmd[i + 1] = transformY(cmd[i + 1]);
+                    }
+                }
+            });
+        }
+
+        return newObj;
+    }
+
     function resizeCanvas() {
         const container = document.querySelector('.canvas-container');
         if (!container) return;
@@ -74,12 +105,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const scaleX = canvasWidth / originalWidth;
             const scaleY = canvasHeight / originalHeight;
-            const scale = Math.min(scaleX, scaleY);
+            currentScale = Math.min(scaleX, scaleY);
 
-            const offsetX = (canvasWidth - originalWidth * scale) / 2;
-            const offsetY = (canvasHeight - originalHeight * scale) / 2;
+            currentOffsetX = (canvasWidth - originalWidth * currentScale) / 2;
+            currentOffsetY = (canvasHeight - originalHeight * currentScale) / 2;
 
-            canvas.viewportTransform = [scale, 0, 0, scale, offsetX, offsetY];
+            canvas.viewportTransform = [currentScale, 0, 0, currentScale, currentOffsetX, currentOffsetY];
         }
         canvas.renderAll();
     }
@@ -141,8 +172,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         e.path.set({ id: 'student-' + Date.now() });
+        
+        // Преобразуем координаты в оригинальные и отправляем
         const pathData = e.path.toObject(['id']);
-        socket.emit('drawing-data', { roomId, object: pathData });
+        const originalCoordsData = studentToOriginalCoords(pathData);
+        socket.emit('drawing-data', { roomId, object: originalCoordsData });
     });
 
     canvas.on('mouse:down', (opt) => {
@@ -194,12 +228,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ---------- ПОЛУЧЕНИЕ ПОЛНОГО СОСТОЯНИЯ ----------
     socket.on('canvas-state', ({ canvasJson }) => {
         applyCanvasState(canvasJson);
     });
 
-    // ---------- ПОЛУЧЕНИЕ ОТДЕЛЬНЫХ ОБЪЕКТОВ (от учеников) ----------
     socket.on('draw-to-client', (obj) => {
         fabric.util.enlivenObjects([obj], (objects) => {
             const objToAdd = objects[0];

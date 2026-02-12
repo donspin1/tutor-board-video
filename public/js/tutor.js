@@ -1,4 +1,4 @@
-// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (отправка полного JSON с размерами)
+// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (видит рисунки ученика + видео без своей камеры)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -286,6 +286,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 lockBtn.innerHTML = isLocked ? '<i class="fas fa-lock"></i>' : '<i class="fas fa-unlock-alt"></i>';
             }
         }
+    });
+
+    // 👇 ПОЛУЧЕНИЕ РИСУНКОВ ОТ УЧЕНИКА (ПРОБЛЕМА 2 РЕШЕНА)
+    socket.on('draw-to-client', (obj) => {
+        fabric.util.enlivenObjects([obj], (objects) => {
+            const objToAdd = objects[0];
+            const existing = canvas.getObjects().find(o => o.id === obj.id);
+            if (existing) canvas.remove(existing);
+            canvas.add(objToAdd);
+            canvas.renderAll();
+            // Отправляем обновлённое состояние остальным (включая других учеников)
+            sendCanvasState();
+        });
     });
 
     socket.on('remove-object', (id) => {
