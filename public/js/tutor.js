@@ -1,4 +1,4 @@
-// tutor.js — ФИНАЛЬНАЯ ВЕРСИЯ (ИСПРАВЛЕННАЯ КОНВЕРТАЦИЯ)
+// tutor.js — СИНХРОНИЗАЦИЯ ЧЕРЕЗ JSON (ПРАВИЛЬНО)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -35,33 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDrawingShape = false;
     let startX, startY, shape;
 
-    // ---------- КОНВЕРТАЦИЯ ПИКСЕЛЕЙ В ПРОЦЕНТЫ ----------
-    function toRelativeCoords(obj) {
-        const newObj = JSON.parse(JSON.stringify(obj));
-        
-        if (newObj.left !== undefined) newObj.left = newObj.left / canvas.width;
-        if (newObj.top !== undefined) newObj.top = newObj.top / canvas.height;
-        if (newObj.x1 !== undefined) newObj.x1 = newObj.x1 / canvas.width;
-        if (newObj.x2 !== undefined) newObj.x2 = newObj.x2 / canvas.width;
-        if (newObj.y1 !== undefined) newObj.y1 = newObj.y1 / canvas.height;
-        if (newObj.y2 !== undefined) newObj.y2 = newObj.y2 / canvas.height;
-        if (newObj.width !== undefined) newObj.width = newObj.width / canvas.width;
-        if (newObj.height !== undefined) newObj.height = newObj.height / canvas.height;
-        if (newObj.radius !== undefined) newObj.radius = newObj.radius / Math.min(canvas.width, canvas.height);
-        
-        // Масштаб НЕ трогаем
-        if (newObj.path) {
-            newObj.path.forEach(cmd => {
-                for (let i = 1; i < cmd.length; i += 2) {
-                    cmd[i] = cmd[i] / canvas.width;
-                    if (i + 1 < cmd.length) {
-                        cmd[i + 1] = cmd[i + 1] / canvas.height;
-                    }
-                }
-            });
-        }
-        
-        return newObj;
+    // ---------- ФУНКЦИЯ ОТПРАВКИ ПОЛНОГО JSON ----------
+    function sendCanvasState() {
+        const canvasJson = canvas.toJSON(['id']); // сохраняем id объектов
+        socket.emit('canvas-state', { roomId, canvasJson });
     }
 
     // ---------- UI ----------
@@ -118,7 +95,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('tool-pencil')?.classList.add('active');
 
-    // ---------- РИСОВАНИЕ ФИГУР ----------
+    // ---------- РИСОВАНИЕ ----------
+    canvas.on('mouse:up', () => {
+        if (shape) {
+            shape.set({ selectable: true, evented: true, id: 'obj-' + Date.now() });
+            shape = null;
+            sendCanvasState();
+        }
+        isDrawingShape = false;
+    });
+
+    canvas.on('path:created', (e) => {
+        e.path.set({ id: 'obj-' + Date.now() });
+        sendCanvasState();
+    });
+
+    canvas.on('object:modified', () => {
+        sendCanvasState();
+    });
+
+    canvas.on('object:removed', () => {
+        sendCanvasState();
+    });
+
+    // ---------- ФИГУРЫ ----------
     canvas.on('mouse:down', (opt) => {
         if (['line', 'rect', 'circle'].includes(currentTool)) {
             isDrawingShape = true;
@@ -178,24 +178,6 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.renderAll();
     });
 
-    canvas.on('mouse:up', () => {
-        if (shape) {
-            shape.set({ selectable: true, evented: true, id: 'obj-' + Date.now() });
-            const shapeData = shape.toObject(['id']);
-            const relativeData = toRelativeCoords(shapeData);
-            socket.emit('drawing-data', { roomId, object: relativeData });
-            shape = null;
-        }
-        isDrawingShape = false;
-    });
-
-    canvas.on('path:created', (e) => {
-        e.path.set({ id: 'obj-' + Date.now() });
-        const pathData = e.path.toObject(['id']);
-        const relativeData = toRelativeCoords(pathData);
-        socket.emit('drawing-data', { roomId, object: relativeData });
-    });
-
     // ---------- ЗАГРУЗКА ИЗОБРАЖЕНИЙ ----------
     document.getElementById('tool-upload')?.addEventListener('click', () => {
         const input = document.createElement('input');
@@ -214,12 +196,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             left: (canvas.width - img.width * scale) / 2,
                             top: (canvas.height - img.height * scale) / 2
                         });
-                        
-                        const imgData = img.toObject(['id']);
-                        const relativeData = toRelativeCoords(imgData);
-                        
                         canvas.add(img);
-                        socket.emit('drawing-data', { roomId, object: relativeData });
+                        sendCanvasState();
                     });
                 };
                 reader.readAsDataURL(file);
@@ -234,6 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
             canvas.clear();
             canvas.backgroundColor = 'white';
             socket.emit('clear-room', roomId);
+            sendCanvasState();
         }
     });
     document.getElementById('clear-btn')?.addEventListener('click', () => {
@@ -241,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.backgroundColor = 'white';
         socket.emit('clear-room', roomId);
         document.getElementById('properties-panel')?.classList.remove('active');
+        sendCanvasState();
     });
 
     // ---------- СОХРАНЕНИЕ ----------
@@ -290,10 +270,12 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('join-room', roomId, 'tutor');
 
     socket.on('init-canvas', (data) => {
-        canvas.loadFromJSON(data, () => {
-            canvas.renderAll();
-            resizeCanvas();
-        });
+        if (data.objects) {
+            canvas.loadFromJSON(data, () => {
+                canvas.renderAll();
+                resizeCanvas();
+            });
+        }
         if (data.locked !== undefined) {
             isLocked = data.locked;
             if (lockBtn) {
@@ -304,23 +286,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('draw-to-client', (obj) => {
-        fabric.util.enlivenObjects([obj], (objects) => {
-            const objToAdd = objects[0];
-            const existing = canvas.getObjects().find(o => o.id === obj.id);
-            if (existing) canvas.remove(existing);
-            canvas.add(objToAdd);
-            canvas.renderAll();
-        });
+        // Игнорируем, используем canvas-state
     });
 
     socket.on('remove-object', (id) => {
         const obj = canvas.getObjects().find(o => o.id === id);
-        if (obj) canvas.remove(obj);
+        if (obj) {
+            canvas.remove(obj);
+            sendCanvasState();
+        }
     });
 
     socket.on('clear-canvas', () => {
         canvas.clear();
         canvas.backgroundColor = 'white';
+        sendCanvasState();
     });
 
     // ---------- WEBRTC ----------

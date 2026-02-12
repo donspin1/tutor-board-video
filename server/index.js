@@ -36,7 +36,9 @@ io.on('connection', (socket) => {
             socket.emit('init-canvas', {
                 objects: room.objects,
                 locked: room.locked,
-                background: room.background
+                background: room.background,
+                width: room.width,
+                height: room.height
             });
         } else if (role === 'student') {
             if (!rooms.has(roomId)) {
@@ -48,11 +50,27 @@ io.on('connection', (socket) => {
             socket.emit('init-canvas', {
                 objects: room.objects,
                 locked: room.locked,
-                background: room.background
+                background: room.background,
+                width: room.width,
+                height: room.height
             });
         }
     });
 
+    // Новый обработчик: полное состояние canvas от репетитора
+    socket.on('canvas-state', ({ roomId, canvasJson }) => {
+        const room = rooms.get(roomId);
+        if (room) {
+            // Сохраняем объекты и размеры холста
+            room.objects = canvasJson.objects || [];
+            room.width = canvasJson.width;
+            room.height = canvasJson.height;
+            // Отправляем всем КРОМЕ отправителя
+            socket.to(roomId).emit('canvas-state', { canvasJson });
+        }
+    });
+
+    // Старый обработчик для рисования отдельных объектов (ученики)
     socket.on('drawing-data', ({ roomId, object }) => {
         const room = rooms.get(roomId);
         if (room) {
@@ -85,6 +103,14 @@ io.on('connection', (socket) => {
         if (room) {
             room.locked = locked;
             io.to(roomId).emit('admin-lock-status', locked);
+        }
+    });
+
+    socket.on('set-background', ({ roomId, background }) => {
+        const room = rooms.get(roomId);
+        if (room) {
+            room.background = background;
+            socket.to(roomId).emit('update-background', background);
         }
     });
 

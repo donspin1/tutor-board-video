@@ -1,4 +1,4 @@
-// student.js — ФИНАЛЬНАЯ ВЕРСИЯ (ИСПРАВЛЕННАЯ КОНВЕРТАЦИЯ)
+// student.js — ПРИЁМ JSON И МАСШТАБИРОВАНИЕ (ПРАВИЛЬНО)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -18,43 +18,49 @@ document.addEventListener('DOMContentLoaded', () => {
         selection: false 
     });
 
-    // ---------- КОНВЕРТАЦИЯ ПРОЦЕНТОВ В ПИКСЕЛИ ----------
-    function toAbsoluteCoords(obj) {
-        if (!obj) return obj;
-        const newObj = JSON.parse(JSON.stringify(obj));
+    // ---------- МАСШТАБИРОВАНИЕ КОНТЕНТА ПОД РАЗМЕР ХОЛСТА ----------
+    function applyCanvasState(stateJson) {
+        // Сохраняем текущие размеры
+        const width = canvas.width;
+        const height = canvas.height;
         
-        if (newObj.left !== undefined) newObj.left = newObj.left * canvas.width;
-        if (newObj.top !== undefined) newObj.top = newObj.top * canvas.height;
-        if (newObj.x1 !== undefined) newObj.x1 = newObj.x1 * canvas.width;
-        if (newObj.x2 !== undefined) newObj.x2 = newObj.x2 * canvas.width;
-        if (newObj.y1 !== undefined) newObj.y1 = newObj.y1 * canvas.height;
-        if (newObj.y2 !== undefined) newObj.y2 = newObj.y2 * canvas.height;
-        if (newObj.width !== undefined) newObj.width = newObj.width * canvas.width;
-        if (newObj.height !== undefined) newObj.height = newObj.height * canvas.height;
-        if (newObj.radius !== undefined) newObj.radius = newObj.radius * Math.min(canvas.width, canvas.height);
-        
-        if (newObj.path) {
-            newObj.path.forEach(cmd => {
-                for (let i = 1; i < cmd.length; i += 2) {
-                    cmd[i] = cmd[i] * canvas.width;
-                    if (i + 1 < cmd.length) {
-                        cmd[i + 1] = cmd[i + 1] * canvas.height;
-                    }
-                }
+        // Загружаем состояние
+        canvas.loadFromJSON(stateJson, () => {
+            // Получаем оригинальные размеры холста из JSON
+            const originalWidth = stateJson.width || 1400; // запасное значение
+            const originalHeight = stateJson.height || 900;
+            
+            // Вычисляем коэффициенты масштабирования
+            const scaleX = width / originalWidth;
+            const scaleY = height / originalHeight;
+            const scale = Math.min(scaleX, scaleY); // сохраняем пропорции
+            
+            // Применяем масштаб ко всем объектам
+            canvas.getObjects().forEach(obj => {
+                obj.scaleX = (obj.scaleX || 1) * scale;
+                obj.scaleY = (obj.scaleY || 1) * scale;
+                obj.left = (obj.left || 0) * scale;
+                obj.top = (obj.top || 0) * scale;
+                if (obj.width) obj.width = obj.width * scale;
+                if (obj.height) obj.height = obj.height * scale;
+                if (obj.radius) obj.radius = obj.radius * scale;
+                if (obj.x1) obj.x1 = obj.x1 * scale;
+                if (obj.x2) obj.x2 = obj.x2 * scale;
+                if (obj.y1) obj.y1 = obj.y1 * scale;
+                if (obj.y2) obj.y2 = obj.y2 * scale;
+                obj.setCoords();
             });
-        }
-        
-        return newObj;
+            
+            canvas.renderAll();
+        });
     }
 
     function resizeCanvas() {
         const container = document.querySelector('.canvas-container');
         if (!container) return;
-        
-        const json = canvas.toJSON();
         canvas.setWidth(container.clientWidth);
         canvas.setHeight(container.clientHeight);
-        canvas.loadFromJSON(json, () => canvas.renderAll());
+        canvas.renderAll();
     }
 
     window.addEventListener('resize', resizeCanvas);
@@ -114,19 +120,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         e.path.set({ id: 'student-' + Date.now() });
-        
+        // Отправляем отдельный объект (как раньше)
         const pathData = e.path.toObject(['id']);
-        if (pathData.path) {
-            pathData.path.forEach(cmd => {
-                for (let i = 1; i < cmd.length; i += 2) {
-                    cmd[i] = cmd[i] / canvas.width;
-                    if (i + 1 < cmd.length) {
-                        cmd[i + 1] = cmd[i + 1] / canvas.height;
-                    }
-                }
-            });
-        }
-        
         socket.emit('drawing-data', { roomId, object: pathData });
     });
 
@@ -174,16 +169,20 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('join-room', roomId, 'student');
 
     socket.on('init-canvas', (data) => {
-        canvas.loadFromJSON(data, () => {
-            canvas.renderAll();
-            resizeCanvas();
-        });
+        if (data.objects) {
+            applyCanvasState(data);
+        }
+        resizeCanvas();
     });
 
-    // ---------- ПОЛУЧЕНИЕ РИСУНКОВ ----------
+    // ---------- ПОЛУЧЕНИЕ ПОЛНОГО СОСТОЯНИЯ CANVAS ----------
+    socket.on('canvas-state', ({ canvasJson }) => {
+        applyCanvasState(canvasJson);
+    });
+
+    // ---------- ОТДЕЛЬНЫЕ ОБЪЕКТЫ (ОТ УЧЕНИКА) ----------
     socket.on('draw-to-client', (obj) => {
-        const absoluteObj = toAbsoluteCoords(obj);
-        fabric.util.enlivenObjects([absoluteObj], (objects) => {
+        fabric.util.enlivenObjects([obj], (objects) => {
             const objToAdd = objects[0];
             const existing = canvas.getObjects().find(o => o.id === obj.id);
             if (existing) canvas.remove(existing);
