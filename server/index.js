@@ -39,7 +39,7 @@ io.on('connection', (socket) => {
         
         const room = rooms.get(roomId);
         
-        // Добавляем участника
+        // Добавляем участника с ролью
         room.participants.set(socket.id, { role, joinedAt: Date.now() });
         socket.join(roomId);
         
@@ -136,6 +136,15 @@ io.on('connection', (socket) => {
         // Удаляем участника из всех комнат
         rooms.forEach((room, roomId) => {
             if (room.participants.has(socket.id)) {
+                const participant = room.participants.get(socket.id);
+                const role = participant.role;
+                
+                // Если отключился репетитор — отправляем ученикам специальное событие
+                if (role === 'tutor') {
+                    console.log(`👨‍🏫 Репетитор ${socket.id} покинул комнату ${roomId}, ученики будут перенаправлены`);
+                    io.to(roomId).emit('tutor-left');
+                }
+                
                 room.participants.delete(socket.id);
                 io.to(roomId).emit('user-left', socket.id);
                 console.log(`👋 user-left: ${socket.id} из ${roomId}`);

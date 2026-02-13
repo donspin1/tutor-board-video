@@ -51,11 +51,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ---------- ПРЕОБРАЗОВАНИЕ КООРДИНАТ ----------
     function studentToOriginalCoords(obj) {
-        // ... (та же функция, что и раньше)
+        if (!obj) return obj;
+        const newObj = JSON.parse(JSON.stringify(obj));
+
+        const scale = currentScale;
+        const offsetX = currentOffsetX;
+        const offsetY = currentOffsetY;
+
+        function transformX(x) { return (x - offsetX) / scale; }
+        function transformY(y) { return (y - offsetY) / scale; }
+
+        if (newObj.left !== undefined) newObj.left = transformX(newObj.left);
+        if (newObj.top !== undefined) newObj.top = transformY(newObj.top);
+        if (newObj.x1 !== undefined) newObj.x1 = transformX(newObj.x1);
+        if (newObj.x2 !== undefined) newObj.x2 = transformX(newObj.x2);
+        if (newObj.y1 !== undefined) newObj.y1 = transformY(newObj.y1);
+        if (newObj.y2 !== undefined) newObj.y2 = transformY(newObj.y2);
+        if (newObj.width !== undefined) newObj.width = newObj.width / scale;
+        if (newObj.height !== undefined) newObj.height = newObj.height / scale;
+        if (newObj.radius !== undefined) newObj.radius = newObj.radius / scale;
+        
+        if (newObj.path) {
+            newObj.path.forEach(cmd => {
+                for (let i = 1; i < cmd.length; i += 2) {
+                    cmd[i] = transformX(cmd[i]);
+                    if (i + 1 < cmd.length) {
+                        cmd[i + 1] = transformY(cmd[i + 1]);
+                    }
+                }
+            });
+        }
+
+        return newObj;
     }
 
     function resizeCanvas() {
-        // ... (та же функция, что и раньше)
+        const container = document.querySelector('.canvas-container');
+        if (!container) return;
+        
+        canvas.setWidth(container.clientWidth);
+        canvas.setHeight(container.clientHeight);
+
+        if (originalWidth && originalHeight) {
+            const canvasWidth = canvas.getWidth();
+            const canvasHeight = canvas.getHeight();
+
+            const scaleX = canvasWidth / originalWidth;
+            const scaleY = canvasHeight / originalHeight;
+            currentScale = Math.min(scaleX, scaleY);
+
+            currentOffsetX = (canvasWidth - originalWidth * currentScale) / 2;
+            currentOffsetY = (canvasHeight - originalHeight * currentScale) / 2;
+
+            canvas.viewportTransform = [currentScale, 0, 0, currentScale, currentOffsetX, currentOffsetY];
+        }
+        canvas.renderAll();
     }
 
     window.addEventListener('resize', resizeCanvas);
@@ -183,10 +233,17 @@ document.addEventListener('DOMContentLoaded', () => {
         originalHeight = null;
     });
 
-    // ---------- WEBRTC ----------
+    // ---------- ВИДЕО ----------
     if (typeof initWebRTC === 'function') {
         initWebRTC(socket, roomId, 'student');
     }
+
+    // ---------- РЕПЕТИТОР ПОКИНУЛ КОМНАТУ → ВЫХОДИМ ----------
+    socket.on('tutor-left', () => {
+        console.log('👨‍🏫 Репетитор покинул комнату. Перенаправление...');
+        alert('Репетитор завершил занятие. Вы будете перенаправлены на главную.');
+        window.location.href = '/';
+    });
 
     // ---------- УВЕДОМЛЕНИЯ ----------
     function showNotification(msg, duration = 3000) {
