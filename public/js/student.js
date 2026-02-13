@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---------- CANVAS ----------
     const canvas = new fabric.Canvas('canvas', { 
         backgroundColor: 'white', 
-        selection: false 
+        selection: false  // уже отключено, оставляем как есть
     });
 
     let originalWidth = null;

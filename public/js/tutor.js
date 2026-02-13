@@ -1,4 +1,4 @@
-// tutor.js — ПОЛНАЯ ВЕРСИЯ с исправлениями
+// tutor.js — ПОЛНАЯ ВЕРСИЯ (отключено перемещение, блокировка по умолчанию)
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -11,8 +11,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const userName = decodeURIComponent(urlParams.get('name') || 'Репетитор');
 
-    // ---------- CANVAS ----------
-    const canvas = new fabric.Canvas('canvas', { backgroundColor: 'white' });
+    // ---------- CANVAS с отключённым выделением/перемещением ----------
+    const canvas = new fabric.Canvas('canvas', { 
+        backgroundColor: 'white',
+        selection: false  // запрещаем выделение и перетаскивание объектов
+    });
 
     function sendCanvasSize() {
         const width = canvas.getWidth();
@@ -193,12 +196,14 @@ document.addEventListener('DOMContentLoaded', () => {
         shape = null;
     });
 
+    // Карандаш
     canvas.on('path:created', (e) => {
         e.path.set({ id: 'tutor-' + Date.now() + '-' + Math.random() });
         const pathData = e.path.toObject(['id']);
         socket.emit('drawing-data', { roomId, object: pathData });
     });
 
+    // Ластик (удаление по клику)
     canvas.on('mouse:down', (opt) => {
         if (currentTool === 'eraser') {
             const target = canvas.findTarget(opt.e);
@@ -209,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Отправка полного состояния при изменении (для синхронизации)
     canvas.on('object:modified', () => sendCanvasState());
     canvas.on('object:removed', () => sendCanvasState());
 
