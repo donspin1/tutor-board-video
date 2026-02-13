@@ -27,8 +27,8 @@ async function initWebRTC(socket, roomId, role) {
         // Отрисовываем себя (покажем темный экран, так как видео выключено)
         addVideoElement('local', localStream, true);
         
-        // 👇 ДОБАВЛЕНО: если репетитор, делаем панель перетаскиваемой
-        if (panel && role === 'tutor' && !panel.dataset.draggable) {
+        // 👇 ДОБАВЛЕНО: перетаскивание для ПК (ширина > 900px) — для всех ролей
+        if (panel && window.innerWidth > 900 && !panel.dataset.draggable) {
             const header = panel.querySelector('.video-header');
             if (header) {
                 makeDraggable(panel, header);
@@ -107,8 +107,8 @@ function createPeerConnection(peerId) {
         if (panel && panel.style.display !== 'flex') {
             panel.style.display = 'flex';
         }
-        // 👇 ДОБАВЛЕНО: если репетитор, делаем панель перетаскиваемой (при получении чужого видео)
-        if (panel && window.role === 'tutor' && !panel.dataset.draggable) {
+        // 👇 ДОБАВЛЕНО: перетаскивание для ПК (ширина > 900px) — для всех ролей
+        if (panel && window.innerWidth > 900 && !panel.dataset.draggable) {
             const header = panel.querySelector('.video-header');
             if (header) {
                 makeDraggable(panel, header);
@@ -263,7 +263,7 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ (ИСПРАВЛЕНО: ПО ВСЕМУ ОКНУ) ----------
+// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ (ПО ВСЕМУ ОКНУ) ----------
 function makeDraggable(element, handle) {
     if (!element || !handle) return;
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
