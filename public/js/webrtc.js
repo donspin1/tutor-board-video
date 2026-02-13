@@ -1,52 +1,64 @@
-// webrtc.js — ФИНАЛЬНАЯ ВЕРСИЯ (перетаскивание видео-панели работает)
-
 let localStream = null;
 let peerConnections = {};
-let isVideoActive = false;
+let isCameraActive = false;
 let webrtcInitialized = false;
 
-function initWebRTC(socket, roomId, role) {
+// ---------- 1. ИНИЦИАЛИЗАЦИЯ ----------
+async function initWebRTC(socket, roomId, role) {
     if (webrtcInitialized) return;
-    
-    window.socket = socket;
-    window.roomId = roomId;
-    window.role = role;
     webrtcInitialized = true;
+    window.socket = socket; 
+    window.role = role;
 
-    console.log(`📹 WebRTC инициализирован для ${role}`);
+    try {
+        // ЗАПРАШИВАЕМ ВСЁ СРАЗУ (это решает проблему со звуком)
+        // Но видео-трек сразу ставим в режим 'disabled'
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        
+        // По умолчанию камера выключена
+        localStream.getVideoTracks().forEach(track => track.enabled = false);
+        isCameraActive = false;
 
-    // Сразу присоединяемся к видеокомнате
+        console.log("🎤 Связь инициализирована (Audio + Muted Video)");
+
+        const panel = document.getElementById('video-panel');
+        if (panel) panel.style.display = 'flex';
+        
+        // Отрисовываем себя (покажем темный экран, так как видео выключено)
+        addVideoElement('local', localStream, true);
+        
+        // 👇 ДОБАВЛЕНО: если репетитор, делаем панель перетаскиваемой
+        if (panel && role === 'tutor' && !panel.dataset.draggable) {
+            const header = panel.querySelector('.video-header');
+            if (header) {
+                makeDraggable(panel, header);
+                panel.dataset.draggable = 'true';
+            }
+        }
+        
+        updateMicUI(true); 
+        updateCamUI(false);
+    } catch (err) {
+        console.error('Ошибка доступа к медиа:', err);
+        // Если камеры нет вообще, пробуем только микрофон
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            addVideoElement('local', localStream, true);
+        } catch (e) {
+            console.error('Даже микрофон не доступен');
+        }
+    }
+
     socket.emit('join-video-room', { roomId, peerId: socket.id, role });
 
-    // Обработчики событий
-    socket.on('user-joined', async ({ peerId, role: remoteRole }) => {
-        console.log(`👤 user joined: ${peerId} (${remoteRole})`);
-
-        const pc = createPeerConnection(peerId);
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
-            });
-        }
-
-        if (pc.signalingState === 'stable') {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit('send-offer', { toPeerId: peerId, offer });
-        }
+    socket.on('user-joined', ({ peerId }) => {
+        if (peerId === socket.id) return;
+        createPeerConnection(peerId);
     });
 
     socket.on('receive-offer', async ({ from, offer }) => {
-        console.log(`📩 Получен offer от ${from}`);
         const pc = createPeerConnection(from);
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
-            });
-        }
-
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('send-answer', { toPeerId: from, answer });
@@ -70,10 +82,10 @@ function initWebRTC(socket, roomId, role) {
         }
     });
 
-    // Настройка кнопок
-    setupButtons();
+    setupButtons(); 
 }
 
+// ---------- 2. СОЗДАНИЕ PEER CONNECTION ----------
 function createPeerConnection(peerId) {
     if (peerConnections[peerId]) return peerConnections[peerId];
 
@@ -82,16 +94,21 @@ function createPeerConnection(peerId) {
     });
     peerConnections[peerId] = pc;
 
+    // Сразу добавляем все треки из localStream
+    if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+
     pc.ontrack = (e) => {
         console.log("🎯 Поток от партнера:", peerId);
         addVideoElement(peerId, e.streams[0], false);
-        // Показываем панель, если скрыта
+        
         const panel = document.getElementById('video-panel');
         if (panel && panel.style.display !== 'flex') {
             panel.style.display = 'flex';
         }
-        // Инициализируем перетаскивание, если ещё не
-        if (panel && !panel.dataset.draggable) {
+        // 👇 ДОБАВЛЕНО: если репетитор, делаем панель перетаскиваемой (при получении чужого видео)
+        if (panel && window.role === 'tutor' && !panel.dataset.draggable) {
             const header = panel.querySelector('.video-header');
             if (header) {
                 makeDraggable(panel, header);
@@ -106,62 +123,50 @@ function createPeerConnection(peerId) {
         }
     };
 
+    pc.onnegotiationneeded = async () => {
+        try {
+            if (pc.signalingState !== 'stable') return;
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            window.socket.emit('send-offer', { toPeerId: peerId, offer });
+        } catch (err) { console.error("Ошибка переговоров:", err); }
+    };
+
     return pc;
 }
 
-async function startVideoCall() {
-    try {
-        if (!localStream) {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        }
-        isVideoActive = true;
+// ---------- 3. УПРАВЛЕНИЕ КАМЕРОЙ ----------
+function toggleCamera() {
+    if (!localStream) return;
+    
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack) {
+        isCameraActive = !isCameraActive;
+        videoTrack.enabled = isCameraActive;
 
-        const panel = document.getElementById('video-panel');
-        if (panel) {
-            panel.style.display = 'flex';
-            if (!panel.dataset.draggable) {
-                const header = panel.querySelector('.video-header');
-                if (header) {
-                    makeDraggable(panel, header);
-                    panel.dataset.draggable = 'true';
-                }
-            }
+        // Чтобы у СЕБЯ видеть темный экран или видео
+        const localVideo = document.querySelector(`#container-local video`);
+        if (localVideo) {
+            localVideo.srcObject = isCameraActive ? localStream : null;
         }
 
-        addVideoElement('local', localStream, true);
-        updateMicUI(true);
-        updateCamUI(true);
-
-        // Если уже есть подключённые пиры, добавляем треки в их соединения
-        Object.values(peerConnections).forEach(pc => {
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
-            });
-        });
-    } catch (err) {
-        console.error('❌ Ошибка запуска видео:', err);
-        alert('Не удалось включить камеру/микрофон');
+        updateCamUI(isCameraActive);
+    } else {
+        alert("Камера не найдена в системе");
     }
 }
 
-function stopVideoCall() {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
+function toggleMic() {
+    if (!localStream) return;
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        updateMicUI(audioTrack.enabled);
     }
-    isVideoActive = false;
-    document.getElementById('video-panel').style.display = 'none';
-    document.getElementById('video-grid').innerHTML = '';
-    updateMicUI(false);
-    updateCamUI(false);
 }
 
-function toggleVideoCall() {
-    if (isVideoActive) stopVideoCall();
-    else startVideoCall();
-}
-
-function addVideoElement(peerId, stream, isLocal) {
+// ---------- 4. ОТРИСОВКА ----------
+function addVideoElement(peerId, stream, isLocal = false) {
     const grid = document.getElementById('video-grid');
     if (!grid) return;
 
@@ -186,64 +191,42 @@ function addVideoElement(peerId, stream, isLocal) {
     }
 
     const videoEl = container.querySelector('video');
-    videoEl.srcObject = stream;
+    
+    // Если это локальное видео и оно выключено — не вешаем stream, чтобы был черный фон
+    if (isLocal && !isCameraActive) {
+        videoEl.srcObject = null;
+    } else {
+        if (videoEl.srcObject !== stream) {
+            videoEl.srcObject = stream;
+        }
+    }
 }
 
 function removeVideoElement(peerId) {
     document.getElementById(`container-${peerId}`)?.remove();
 }
 
-function toggleMicrophone() {
-    if (!localStream) return;
-    const track = localStream.getAudioTracks()[0];
-    if (track) {
-        track.enabled = !track.enabled;
-        updateMicUI(track.enabled);
-    }
-}
-
-function toggleCamera() {
-    if (!localStream) return;
-    const track = localStream.getVideoTracks()[0];
-    if (track) {
-        track.enabled = !track.enabled;
-        updateCamUI(track.enabled);
-        // Для локального видео: если камера выключена — показываем чёрный фон
-        const localVideo = document.querySelector('#container-local video');
-        if (localVideo) {
-            localVideo.srcObject = track.enabled ? localStream : null;
-        }
-    }
+// ---------- 5. КНОПКИ ----------
+function setupButtons() {
+    document.getElementById('call-mic').onclick = toggleMic;
+    document.getElementById('call-cam').onclick = toggleCamera;
+    
+    const leave = () => { window.location.href = '/'; };
+    if (document.getElementById('call-end')) document.getElementById('call-end').onclick = leave;
+    if (document.getElementById('exit-btn')) document.getElementById('exit-btn').onclick = leave;
 }
 
 function updateMicUI(enabled) {
     const btn = document.getElementById('call-mic');
-    if (btn) {
-        btn.innerHTML = enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
-        btn.classList.toggle('active', enabled);
-    }
+    if (btn) btn.innerHTML = enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
 }
 
 function updateCamUI(enabled) {
     const btn = document.getElementById('call-cam');
-    if (btn) {
-        btn.innerHTML = enabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
-        btn.classList.toggle('active', enabled);
-    }
+    if (btn) btn.innerHTML = enabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
 }
 
-function setupButtons() {
-    document.getElementById('call-mic')?.addEventListener('click', toggleMicrophone);
-    document.getElementById('call-cam')?.addEventListener('click', toggleCamera);
-    document.getElementById('call-end')?.addEventListener('click', () => {
-        window.location.href = '/';
-    });
-    document.getElementById('exit-btn')?.addEventListener('click', () => {
-        window.location.href = '/';
-    });
-    document.getElementById('call-screen')?.addEventListener('click', startScreenShare);
-}
-
+// ---------- 6. ДЕМОНСТРАЦИЯ ЭКРАНА ----------
 async function startScreenShare() {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -258,7 +241,8 @@ async function startScreenShare() {
         replaceVideoTrack(videoTrack);
         updateCamUI(true);
     } catch (err) {
-        console.error('❌ Ошибка демонстрации экрана:', err);
+        console.error('Ошибка демонстрации экрана:', err);
+        alert("Не удалось начать демонстрацию");
     }
 }
 
@@ -274,11 +258,12 @@ function replaceVideoTrack(newTrack) {
             oldTrack.stop();
         }
         localStream.addTrack(newTrack);
-        const localVideo = document.querySelector('#container-local video');
+        const localVideo = document.querySelector(`#container-local video`);
         if (localVideo) localVideo.srcObject = localStream;
     }
 }
 
+// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ (уже есть) ----------
 function makeDraggable(element, handle) {
     if (!element || !handle) return;
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
