@@ -27,6 +27,12 @@ io.on('connection', (socket) => {
         console.log(`📥 ${role} вход в ${roomId}`);
         
         if (!rooms.has(roomId)) {
+            if (role === 'student') {
+                // Если комнаты нет и это ученик — сразу отказ
+                socket.emit('room-not-found');
+                return;
+            }
+            // Если репетитор — создаём новую комнату
             rooms.set(roomId, {
                 participants: new Map(),
                 objects: [],
@@ -34,10 +40,20 @@ io.on('connection', (socket) => {
                 width: null,
                 height: null
             });
-            console.log(`🆕 Комната ${roomId} создана`);
+            console.log(`🆕 Комната ${roomId} создана репетитором`);
         }
         
         const room = rooms.get(roomId);
+        
+        // Для ученика дополнительно проверяем, есть ли в комнате репетитор
+        if (role === 'student') {
+            const hasTutor = Array.from(room.participants.values()).some(p => p.role === 'tutor');
+            if (!hasTutor) {
+                console.log(`⛔ Ученик ${socket.id} пытается войти в комнату без репетитора`);
+                socket.emit('room-no-tutor');
+                return;
+            }
+        }
         
         // Добавляем участника с ролью
         room.participants.set(socket.id, { role, joinedAt: Date.now() });
@@ -148,6 +164,12 @@ io.on('connection', (socket) => {
                 room.participants.delete(socket.id);
                 io.to(roomId).emit('user-left', socket.id);
                 console.log(`👋 user-left: ${socket.id} из ${roomId}`);
+                
+                // Если комната опустела — можно удалить (но оставим для возможности восстановления репетитором)
+                // if (room.participants.size === 0) {
+                //     rooms.delete(roomId);
+                //     console.log(`🗑️ Комната ${roomId} удалена (пуста)`);
+                // }
             }
         });
     });

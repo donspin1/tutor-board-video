@@ -196,7 +196,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ---------- КОМНАТА ----------
     socket.on('room-not-found', () => {
-        alert('Комната не найдена. Уточните ID у репетитора.');
+        alert('Комната с таким ID не существует.');
+        window.location.href = '/';
+    });
+
+    // ⛔ НОВОЕ: нет репетитора в комнате
+    socket.on('room-no-tutor', () => {
+        alert('В комнате нет репетитора. Вход невозможен.');
         window.location.href = '/';
     });
 
