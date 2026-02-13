@@ -1,4 +1,4 @@
-// student.js — с отключением интерактивности при блокировке
+// student.js — с отключением интерактивности при блокировке + исправленная мобильная адаптация
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -24,6 +24,50 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentScale = 1;
     let currentOffsetX = 0;
     let currentOffsetY = 0;
+    let hasAccess = false;
+    let currentTool = 'pencil'; // добавлено: по умолчанию карандаш
+
+    const accessIndicator = document.getElementById('access-indicator');
+
+    // ---------- ПЕРЕКЛЮЧЕНИЕ ИНСТРУМЕНТОВ (pencil / eraser) ----------
+    document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentTool = btn.id.replace('tool-', '');
+            if (hasAccess) {
+                canvas.isDrawingMode = (currentTool === 'pencil');
+            }
+        });
+    });
+    document.getElementById('tool-pencil')?.classList.add('active');
+
+    // ---------- НОВАЯ ФУНКЦИЯ ДЛЯ АДАПТАЦИИ ----------
+    function resizeCanvasForStudent() {
+        const container = document.querySelector('.canvas-container');
+        if (!container || !originalWidth || !originalHeight) return;
+
+        canvas.setDimensions({
+            width: container.clientWidth,
+            height: container.clientHeight
+        });
+
+        const scaleX = container.clientWidth / originalWidth;
+        const scaleY = container.clientHeight / originalHeight;
+        currentScale = Math.min(scaleX, scaleY);
+
+        currentOffsetX = (container.clientWidth - originalWidth * currentScale) / 2;
+        currentOffsetY = (container.clientHeight - originalHeight * currentScale) / 2;
+
+        canvas.viewportTransform = [
+            currentScale, 0,
+            0, currentScale,
+            currentOffsetX, currentOffsetY
+        ];
+
+        canvas.renderAll();
+        canvas.requestRenderAll();
+    }
 
     // ---------- МАСШТАБИРОВАНИЕ ----------
     function applyCanvasState(stateJson) {
@@ -32,21 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!originalWidth || !originalHeight) return;
 
         canvas.loadFromJSON(stateJson, () => {
-            const container = document.querySelector('.canvas-container');
-            if (container) {
-                canvas.setWidth(container.clientWidth);
-                canvas.setHeight(container.clientHeight);
-            }
-
-            const canvasWidth = canvas.getWidth();
-            const canvasHeight = canvas.getHeight();
-            const scaleX = canvasWidth / originalWidth;
-            const scaleY = canvasHeight / originalHeight;
-            currentScale = Math.min(scaleX, scaleY);
-            currentOffsetX = (canvasWidth - originalWidth * currentScale) / 2;
-            currentOffsetY = (canvasHeight - originalHeight * currentScale) / 2;
-            canvas.viewportTransform = [currentScale, 0, 0, currentScale, currentOffsetX, currentOffsetY];
-            canvas.renderAll();
+            resizeCanvasForStudent();
         });
     }
 
@@ -54,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (width && height) {
             originalWidth = width;
             originalHeight = height;
-            resizeCanvas();
+            resizeCanvasForStudent();
         }
     });
 
@@ -94,118 +124,30 @@ document.addEventListener('DOMContentLoaded', () => {
         return newObj;
     }
 
-    function resizeCanvas() {
-        const container = document.querySelector('.canvas-container');
-        if (!container) return;
-        
-        canvas.setWidth(container.clientWidth);
-        canvas.setHeight(container.clientHeight);
-
-        if (originalWidth && originalHeight) {
-            const canvasWidth = canvas.getWidth();
-            const canvasHeight = canvas.getHeight();
-
-            const scaleX = canvasWidth / originalWidth;
-            const scaleY = canvasHeight / originalHeight;
-            currentScale = Math.min(scaleX, scaleY);
-
-            currentOffsetX = (canvasWidth - originalWidth * currentScale) / 2;
-            currentOffsetY = (canvasHeight - originalHeight * currentScale) / 2;
-
-            canvas.viewportTransform = [currentScale, 0, 0, currentScale, currentOffsetX, currentOffsetY];
-        }
-        canvas.renderAll();
-    }
-
-    window.addEventListener('resize', resizeCanvas);
-    setTimeout(resizeCanvas, 100);
-    setTimeout(resizeCanvas, 300);
-
-    canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-    canvas.freeDrawingBrush.width = 5;
-    canvas.freeDrawingBrush.color = '#000000';
-    canvas.isDrawingMode = false;
-
-    let currentTool = 'pencil';
-    let hasAccess = false; // По умолчанию доступ закрыт
-
-    // ---------- UI ----------
-    const roomIdEl = document.getElementById('room-id');
-    if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
-    const usernameEl = document.getElementById('username-display');
-    if (usernameEl) usernameEl.innerHTML = `<i class="fas fa-user-graduate"></i> ${userName}`;
-    const accessIndicator = document.getElementById('access-indicator');
-
-    // Устанавливаем начальное состояние индикатора (красный, доступ ограничен)
-    if (accessIndicator) {
-        accessIndicator.style.background = 'var(--danger)';
-        accessIndicator.innerHTML = '<i class="fas fa-lock"></i> Доступ ограничен';
-    }
-
-    // ---------- ИНСТРУМЕНТЫ ----------
-    const pencilBtn = document.getElementById('tool-pencil');
-    const eraserBtn = document.getElementById('tool-eraser');
-    if (pencilBtn) {
-        pencilBtn.addEventListener('click', () => {
-            document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
-            pencilBtn.classList.add('active');
-            currentTool = 'pencil';
-            // Рисование разрешено только если есть доступ
-            canvas.isDrawingMode = hasAccess;
-        });
-    }
-    if (eraserBtn) {
-        eraserBtn.addEventListener('click', () => {
-            document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
-            eraserBtn.classList.add('active');
-            currentTool = 'eraser';
-            canvas.isDrawingMode = false;
-        });
-    }
-    pencilBtn?.classList.add('active');
-
-    // Блокируем инструменты визуально (полупрозрачные) пока доступ закрыт
-    function updateToolsAccess() {
-        document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
-            if (btn.id !== 'tool-pencil' && btn.id !== 'tool-eraser') return;
-            btn.style.opacity = hasAccess ? '1' : '0.5';
-            btn.style.pointerEvents = hasAccess ? 'auto' : 'none';
-        });
-    }
-    updateToolsAccess();
-
     // ---------- РИСОВАНИЕ ----------
-    canvas.on('path:created', (e) => {
-        if (!hasAccess) {
-            canvas.remove(e.path);
-            showNotification('Доступ закрыт', 2000);
-            return;
-        }
-        e.path.set({ id: 'student-' + Date.now() });
-        const pathData = e.path.toObject(['id']);
-        const originalCoordsData = studentToOriginalCoords(pathData);
-        socket.emit('drawing-data', { roomId, object: originalCoordsData });
+    canvas.on('path:created', (opt) => {
+        if (!hasAccess || currentTool !== 'pencil') return;
+        const obj = opt.path;
+        obj.id = Date.now() + Math.random();
+        const transformed = studentToOriginalCoords(obj.toObject(['id']));
+        socket.emit('drawing-data', { roomId, object: transformed });
     });
 
     canvas.on('mouse:down', (opt) => {
-        if (currentTool === 'eraser' && hasAccess) {
-            const target = canvas.findTarget(opt.e);
-            if (target) {
-                canvas.remove(target);
-                socket.emit('remove-object', { roomId, id: target.id });
-            }
+        if (!hasAccess || currentTool !== 'eraser') return;
+        const target = canvas.findTarget(opt.e);
+        if (target) {
+            canvas.remove(target);
+            socket.emit('remove-object', { roomId, id: target.id });
         }
     });
 
     // ---------- БЛОКИРОВКА ----------
-    // Функция обновления состояния интерактивности холста
     function updateCanvasInteractive() {
         canvas.interactive = hasAccess;
-        // Если доступ закрыт, также выключаем режим рисования
         if (!hasAccess) {
             canvas.isDrawingMode = false;
         } else {
-            // Если доступ открыт, восстанавливаем режим рисования в соответствии с выбранным инструментом
             canvas.isDrawingMode = (currentTool === 'pencil');
         }
     }
@@ -213,7 +155,6 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('admin-lock-status', (locked) => {
         hasAccess = !locked;
         updateCanvasInteractive();
-        updateToolsAccess();
 
         if (accessIndicator) {
             if (hasAccess) {
@@ -241,12 +182,13 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('join-room', roomId, 'student');
 
     socket.on('init-canvas', (data) => {
-        if (data.canvasJson) applyCanvasState(data.canvasJson);
-        // Обрабатываем статус блокировки
+        if (data.canvasJson) {
+            applyCanvasState(data.canvasJson);
+            resizeCanvasForStudent();
+        }
         if (data.locked !== undefined) {
             hasAccess = !data.locked;
             updateCanvasInteractive();
-            updateToolsAccess();
             if (accessIndicator) {
                 if (hasAccess) {
                     accessIndicator.style.background = 'var(--success)';
@@ -261,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('canvas-state', ({ canvasJson }) => {
         applyCanvasState(canvasJson);
+        resizeCanvasForStudent();
     });
 
     socket.on('draw-to-client', (obj) => {
@@ -291,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initWebRTC(socket, roomId, 'student');
     }
 
-    // ---------- РЕПЕТИТОР ПОКИНУЛ КОМНАТУ → ВЫХОДИМ ----------
+    // ---------- РЕПЕТИТОР ПОКИНУЛ КОМНАТУ ----------
     socket.on('tutor-left', () => {
         console.log('👨‍🏫 Репетитор покинул комнату. Перенаправление...');
         alert('Репетитор завершил занятие. Вы будете перенаправлены на главную.');
@@ -308,6 +251,17 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => notif.classList.remove('show'), duration);
         }
     }
+
+    // ---------- РЕСАЙЗ И ОРИЕНТАЦИЯ ----------
+    window.addEventListener('resize', resizeCanvasForStudent);
+    window.addEventListener('orientationchange', () => {
+        setTimeout(resizeCanvasForStudent, 100);
+    });
+
+    // Надёжная инициализация
+    setTimeout(resizeCanvasForStudent, 100);
+    setTimeout(resizeCanvasForStudent, 500);
+    setTimeout(resizeCanvasForStudent, 1000);
 
     setTimeout(() => showNotification(`Добро пожаловать, ${userName}!`, 3000), 500);
 });

@@ -169,176 +169,6 @@ body {
     background: #ef4444;
 }
 
-.lock-btn {
-    background: var(--success);
-    color: white;
-}
-
-.lock-btn.locked {
-    background: var(--danger);
-}
-
-/* ===== ПАНЕЛЬ ВИДЕО (ОСНОВНЫЕ СТИЛИ) ===== */
-.video-panel {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 0; /* убираем внутренний отступ, добавим внутри */
-    margin-bottom: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    flex-shrink: 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-.video-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 15px;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
-    border-radius: 16px 16px 0 0;
-    cursor: move;
-    user-select: none;
-    font-weight: 500;
-    color: var(--dark);
-}
-
-.video-header span {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.video-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 10px;
-    padding: 15px;
-}
-
-.video-container {
-    position: relative;
-    background: var(--dark);
-    border-radius: 12px;
-    overflow: hidden;
-    aspect-ratio: 4/3;
-}
-
-.video-container video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    background-color: var(--dark);
-}
-
-.video-label {
-    position: absolute;
-    bottom: 5px;
-    left: 5px;
-    background: rgba(0, 0, 0, 0.6);
-    color: white;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    z-index: 5;
-}
-
-/* ===== ДОСКА ===== */
-.canvas-area {
-    flex: 1;
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    position: relative;
-    padding: 15px;
-}
-
-.canvas-container {
-    flex: 1;
-    width: 100% !important;
-    height: 100% !important;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    position: relative;
-}
-
-#canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-/* ===== ПАНЕЛЬ СВОЙСТВ ===== */
-.properties-panel {
-    position: absolute;
-    right: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 260px;
-    background: white;
-    border-radius: 16px;
-    padding: 20px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-    display: none;
-    z-index: 90;
-}
-
-.properties-panel.active {
-    display: block;
-}
-
-.panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    cursor: move;
-    user-select: none;
-}
-
-.close-panel {
-    background: none;
-    border: none;
-    font-size: 20px;
-    cursor: pointer;
-    color: #94a3b8;
-}
-
-.color-palette {
-    display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 6px;
-    margin-bottom: 15px;
-}
-
-.color-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    cursor: pointer;
-    border: 2px solid transparent;
-}
-
-.color-btn.active {
-    border-color: var(--dark);
-    box-shadow: 0 0 0 2px white;
-}
-
-.brush-slider {
-    margin-top: 10px;
-}
-
-#brush-slider {
-    width: 100%;
-}
-
 .notification {
     position: fixed;
     top: 20px;
@@ -464,10 +294,6 @@ body {
         padding: 12px;
     }
 
-    .canvas-area {
-        padding: 10px;
-    }
-
     .copy-btn span {
         display: none;
     }
@@ -488,4 +314,25 @@ body {
         height: 36px;
         font-size: 16px;
     }
+}
+
+/* ===== ДОПОЛНЕНИЯ ДЛЯ ПРАВИЛЬНОЙ АДАПТАЦИИ ДОСКИ (фикс мобильной версии) ===== */
+.canvas-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: white;
+    padding: 0 !important;
+}
+
+.canvas-container {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
