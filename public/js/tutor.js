@@ -305,6 +305,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---------- SOCKET ----------
     socket.emit('join-room', roomId, 'tutor');
 
+    // Отправляем размеры canvas сразу после входа (небольшая задержка для гарантии)
+    setTimeout(() => {
+        sendCanvasSize();
+    }, 100);
+
     socket.on('init-canvas', (data) => {
         if (data.canvasJson) {
             canvas.loadFromJSON(data.canvasJson, () => {

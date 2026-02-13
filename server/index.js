@@ -31,12 +31,13 @@ io.on('connection', (socket) => {
                 socket.emit('room-not-found');
                 return;
             }
+            // При создании комнаты репетитором задаём стандартные размеры доски
             rooms.set(roomId, {
                 participants: new Map(),
                 objects: [],
                 locked: true,
-                width: null,
-                height: null
+                width: 800,   // ← добавлено
+                height: 600   // ← добавлено
             });
             console.log(`🆕 Комната ${roomId} создана репетитором`);
         }
