@@ -1,4 +1,4 @@
-// student.js — ТОЛЬКО ДОСКА (видео полностью в webrtc.js)
+// student.js — с обработкой размеров холста
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -48,6 +48,15 @@ document.addEventListener('DOMContentLoaded', () => {
             canvas.renderAll();
         });
     }
+
+    // Новый обработчик для получения размеров от репетитора
+    socket.on('canvas-size', ({ width, height }) => {
+        if (width && height) {
+            originalWidth = width;
+            originalHeight = height;
+            resizeCanvas(); // пересчитает масштаб и offset
+        }
+    });
 
     // ---------- ПРЕОБРАЗОВАНИЕ КООРДИНАТ ----------
     function studentToOriginalCoords(obj) {
@@ -200,7 +209,6 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.href = '/';
     });
 
-    // ⛔ НОВОЕ: нет репетитора в комнате
     socket.on('room-no-tutor', () => {
         alert('В комнате нет репетитора. Вход невозможен.');
         window.location.href = '/';

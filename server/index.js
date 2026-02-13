@@ -28,11 +28,9 @@ io.on('connection', (socket) => {
         
         if (!rooms.has(roomId)) {
             if (role === 'student') {
-                // Если комнаты нет и это ученик — сразу отказ
                 socket.emit('room-not-found');
                 return;
             }
-            // Если репетитор — создаём новую комнату
             rooms.set(roomId, {
                 participants: new Map(),
                 objects: [],
@@ -45,7 +43,6 @@ io.on('connection', (socket) => {
         
         const room = rooms.get(roomId);
         
-        // Для ученика дополнительно проверяем, есть ли в комнате репетитор
         if (role === 'student') {
             const hasTutor = Array.from(room.participants.values()).some(p => p.role === 'tutor');
             if (!hasTutor) {
@@ -55,11 +52,9 @@ io.on('connection', (socket) => {
             }
         }
         
-        // Добавляем участника с ролью
         room.participants.set(socket.id, { role, joinedAt: Date.now() });
         socket.join(roomId);
         
-        // 1. Отправляем новому участнику список ВСЕХ текущих участников
         const participants = Array.from(room.participants.entries())
             .filter(([id]) => id !== socket.id)
             .map(([id, data]) => ({ peerId: id, role: data.role }));
@@ -67,10 +62,9 @@ io.on('connection', (socket) => {
         socket.emit('room-participants', participants);
         console.log(`📋 Отправлен список участников (${participants.length} чел.)`);
         
-        // 2. Оповещаем остальных, что новый участник присоединился
         socket.to(roomId).emit('user-joined', { peerId: socket.id, role });
         
-        // 3. Отправляем состояние доски
+        // Отправляем состояние доски с сохранёнными размерами
         socket.emit('init-canvas', {
             canvasJson: {
                 objects: room.objects || [],
@@ -82,7 +76,17 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ---------- ДОСКА ----------
+    // ---------- НОВЫЙ ОБРАБОТЧИК для canvas-size ----------
+    socket.on('canvas-size', ({ roomId, width, height }) => {
+        const room = rooms.get(roomId);
+        if (room) {
+            room.width = width;
+            room.height = height;
+            // Отправляем всем остальным участникам комнаты
+            socket.to(roomId).emit('canvas-size', { width, height });
+        }
+    });
+
     socket.on('canvas-state', ({ roomId, canvasJson }) => {
         const room = rooms.get(roomId);
         if (room) {
@@ -149,13 +153,11 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('❌ Отключен:', socket.id);
         
-        // Удаляем участника из всех комнат
         rooms.forEach((room, roomId) => {
             if (room.participants.has(socket.id)) {
                 const participant = room.participants.get(socket.id);
                 const role = participant.role;
                 
-                // Если отключился репетитор — отправляем ученикам специальное событие
                 if (role === 'tutor') {
                     console.log(`👨‍🏫 Репетитор ${socket.id} покинул комнату ${roomId}, ученики будут перенаправлены`);
                     io.to(roomId).emit('tutor-left');
@@ -164,12 +166,6 @@ io.on('connection', (socket) => {
                 room.participants.delete(socket.id);
                 io.to(roomId).emit('user-left', socket.id);
                 console.log(`👋 user-left: ${socket.id} из ${roomId}`);
-                
-                // Если комната опустела — можно удалить (но оставим для возможности восстановления репетитором)
-                // if (room.participants.size === 0) {
-                //     rooms.delete(roomId);
-                //     console.log(`🗑️ Комната ${roomId} удалена (пуста)`);
-                // }
             }
         });
     });
