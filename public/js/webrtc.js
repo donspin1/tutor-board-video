@@ -11,8 +11,6 @@ async function initWebRTC(socket, roomId, role) {
     window.role = role;
 
     try {
-        // ЗАПРАШИВАЕМ ВСЁ СРАЗУ (это решает проблему со звуком)
-        // Но видео-трек сразу ставим в режим 'disabled'
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
         
         // По умолчанию камера выключена
@@ -24,10 +22,8 @@ async function initWebRTC(socket, roomId, role) {
         const panel = document.getElementById('video-panel');
         if (panel) panel.style.display = 'flex';
         
-        // Отрисовываем себя (покажем темный экран, так как видео выключено)
         addVideoElement('local', localStream, true);
         
-        // 👇 ДОБАВЛЕНО: перетаскивание для ПК (ширина > 900px) — для всех ролей
         if (panel && window.innerWidth > 900 && !panel.dataset.draggable) {
             const header = panel.querySelector('.video-header');
             if (header) {
@@ -36,11 +32,11 @@ async function initWebRTC(socket, roomId, role) {
             }
         }
         
+        // Обновляем UI: микрофон включен (зеленый), камера выключена (красный)
         updateMicUI(true); 
         updateCamUI(false);
     } catch (err) {
         console.error('Ошибка доступа к медиа:', err);
-        // Если камеры нет вообще, пробуем только микрофон
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             addVideoElement('local', localStream, true);
@@ -94,7 +90,6 @@ function createPeerConnection(peerId) {
     });
     peerConnections[peerId] = pc;
 
-    // Сразу добавляем все треки из localStream
     if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
@@ -107,7 +102,6 @@ function createPeerConnection(peerId) {
         if (panel && panel.style.display !== 'flex') {
             panel.style.display = 'flex';
         }
-        // 👇 ДОБАВЛЕНО: перетаскивание для ПК (ширина > 900px) — для всех ролей
         if (panel && window.innerWidth > 900 && !panel.dataset.draggable) {
             const header = panel.querySelector('.video-header');
             if (header) {
@@ -142,9 +136,8 @@ function toggleCamera() {
     const videoTrack = localStream.getVideoTracks()[0];
     if (videoTrack) {
         isCameraActive = !isCameraActive;
-        videoTrack.enabled = isCameraActive; // Включаем/выключаем сам поток данных
+        videoTrack.enabled = isCameraActive;
 
-        // Чтобы у СЕБЯ видеть темный экран или видео
         const localVideo = document.querySelector(`#container-local video`);
         if (localVideo) {
             localVideo.srcObject = isCameraActive ? localStream : null;
@@ -192,7 +185,6 @@ function addVideoElement(peerId, stream, isLocal = false) {
 
     const videoEl = container.querySelector('video');
     
-    // Если это локальное видео и оно выключено — не вешаем stream, чтобы был черный фон
     if (isLocal && !isCameraActive) {
         videoEl.srcObject = null;
     } else {
@@ -216,14 +208,35 @@ function setupButtons() {
     if (document.getElementById('exit-btn')) document.getElementById('exit-btn').onclick = leave;
 }
 
+// Обновлённые функции с изменением цвета
 function updateMicUI(enabled) {
     const btn = document.getElementById('call-mic');
-    if (btn) btn.innerHTML = enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
+    if (btn) {
+        if (enabled) {
+            btn.classList.remove('danger');
+            btn.classList.add('active');
+            btn.innerHTML = '<i class="fas fa-microphone"></i>';
+        } else {
+            btn.classList.remove('active');
+            btn.classList.add('danger');
+            btn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+        }
+    }
 }
 
 function updateCamUI(enabled) {
     const btn = document.getElementById('call-cam');
-    if (btn) btn.innerHTML = enabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
+    if (btn) {
+        if (enabled) {
+            btn.classList.remove('danger');
+            btn.classList.add('active');
+            btn.innerHTML = '<i class="fas fa-video"></i>';
+        } else {
+            btn.classList.remove('active');
+            btn.classList.add('danger');
+            btn.innerHTML = '<i class="fas fa-video-slash"></i>';
+        }
+    }
 }
 
 // ---------- 6. ДЕМОНСТРАЦИЯ ЭКРАНА ----------
@@ -263,7 +276,7 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ (ПО ВСЕМУ ОКНУ) ----------
+// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ ----------
 function makeDraggable(element, handle) {
     if (!element || !handle) return;
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
@@ -286,7 +299,6 @@ function makeDraggable(element, handle) {
         pos4 = e.clientY;
         let top = element.offsetTop - pos2;
         let left = element.offsetLeft - pos1;
-        // Ограничения по размерам окна (чтобы панель не ушла за пределы)
         const maxTop = document.documentElement.clientHeight - element.offsetHeight;
         const maxLeft = document.documentElement.clientWidth - element.offsetWidth;
         top = Math.min(Math.max(top, 0), maxTop);

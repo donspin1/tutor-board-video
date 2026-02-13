@@ -34,7 +34,7 @@ io.on('connection', (socket) => {
             rooms.set(roomId, {
                 participants: new Map(),
                 objects: [],
-                locked: false,
+                locked: true,
                 width: null,
                 height: null
             });

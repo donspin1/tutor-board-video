@@ -1,4 +1,4 @@
-// student.js — с обработкой размеров холста
+// student.js — с обработкой блокировки и корректным начальным доступом
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -49,12 +49,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Новый обработчик для получения размеров от репетитора
     socket.on('canvas-size', ({ width, height }) => {
         if (width && height) {
             originalWidth = width;
             originalHeight = height;
-            resizeCanvas(); // пересчитает масштаб и offset
+            resizeCanvas();
         }
     });
 
@@ -127,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.isDrawingMode = false;
 
     let currentTool = 'pencil';
-    let hasAccess = true;
+    let hasAccess = false; // По умолчанию доступ закрыт (будет обновлено при получении статуса)
 
     // ---------- UI ----------
     const roomIdEl = document.getElementById('room-id');
@@ -135,6 +134,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const usernameEl = document.getElementById('username-display');
     if (usernameEl) usernameEl.innerHTML = `<i class="fas fa-user-graduate"></i> ${userName}`;
     const accessIndicator = document.getElementById('access-indicator');
+
+    // Устанавливаем начальное состояние индикатора (красный, доступ ограничен)
+    if (accessIndicator) {
+        accessIndicator.style.background = 'var(--danger)';
+        accessIndicator.innerHTML = '<i class="fas fa-lock"></i> Доступ ограничен';
+    }
 
     // ---------- ИНСТРУМЕНТЫ ----------
     const pencilBtn = document.getElementById('tool-pencil');
@@ -144,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
             pencilBtn.classList.add('active');
             currentTool = 'pencil';
-            canvas.isDrawingMode = hasAccess;
+            canvas.isDrawingMode = hasAccess; // Рисование только если есть доступ
         });
     }
     if (eraserBtn) {
@@ -156,6 +161,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     pencilBtn?.classList.add('active');
+
+    // Блокируем инструменты визуально (полупрозрачные) пока доступ закрыт
+    function updateToolsAccess() {
+        document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
+            if (btn.id !== 'tool-pencil' && btn.id !== 'tool-eraser') return;
+            btn.style.opacity = hasAccess ? '1' : '0.5';
+            btn.style.pointerEvents = hasAccess ? 'auto' : 'none';
+        });
+    }
+    updateToolsAccess(); // Применим начальное состояние
 
     // ---------- РИСОВАНИЕ ----------
     canvas.on('path:created', (e) => {
@@ -185,11 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hasAccess = !locked;
         canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
 
-        document.querySelectorAll('.sidebar .tool-btn').forEach(btn => {
-            if (btn.id !== 'tool-pencil' && btn.id !== 'tool-eraser') return;
-            btn.style.opacity = hasAccess ? '1' : '0.5';
-            btn.style.pointerEvents = hasAccess ? 'auto' : 'none';
-        });
+        updateToolsAccess();
 
         if (accessIndicator) {
             if (hasAccess) {
@@ -218,6 +229,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('init-canvas', (data) => {
         if (data.canvasJson) applyCanvasState(data.canvasJson);
+        // Обрабатываем статус блокировки
+        if (data.locked !== undefined) {
+            hasAccess = !data.locked;
+            canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
+            updateToolsAccess();
+            if (accessIndicator) {
+                if (hasAccess) {
+                    accessIndicator.style.background = 'var(--success)';
+                    accessIndicator.innerHTML = '<i class="fas fa-check-circle"></i> Доступ разрешён';
+                } else {
+                    accessIndicator.style.background = 'var(--danger)';
+                    accessIndicator.innerHTML = '<i class="fas fa-lock"></i> Доступ ограничен';
+                }
+            }
+        }
     });
 
     socket.on('canvas-state', ({ canvasJson }) => {

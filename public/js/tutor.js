@@ -1,4 +1,4 @@
-// tutor.js — ПОЛНАЯ ВЕРСИЯ с отправкой размеров и объектов
+// tutor.js — ПОЛНАЯ ВЕРСИЯ с исправлениями
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -14,28 +14,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---------- CANVAS ----------
     const canvas = new fabric.Canvas('canvas', { backgroundColor: 'white' });
 
-    // Функция для отправки размеров холста
     function sendCanvasSize() {
         const width = canvas.getWidth();
         const height = canvas.getHeight();
         socket.emit('canvas-size', { roomId, width, height });
     }
 
-    // Функция изменения размера холста
     function resizeCanvas() {
         const container = document.querySelector('.canvas-container');
         if (!container) return;
         canvas.setWidth(container.clientWidth);
         canvas.setHeight(container.clientHeight);
         canvas.renderAll();
-        sendCanvasSize(); // отправляем новые размеры после изменения
+        sendCanvasSize();
     }
 
     window.addEventListener('resize', resizeCanvas);
     setTimeout(resizeCanvas, 100);
     setTimeout(resizeCanvas, 300);
 
-    // Настройки кисти
     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
     canvas.freeDrawingBrush.width = 5;
     canvas.freeDrawingBrush.color = '#000000';
@@ -47,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDrawingShape = false;
     let startX, startY, shape;
 
-    // ---------- UI ----------
+    // UI элементы
     const roomIdEl = document.getElementById('room-id');
     if (roomIdEl) roomIdEl.innerText = `ID: ${roomId}`;
     
@@ -196,14 +193,12 @@ document.addEventListener('DOMContentLoaded', () => {
         shape = null;
     });
 
-    // Карандаш
     canvas.on('path:created', (e) => {
         e.path.set({ id: 'tutor-' + Date.now() + '-' + Math.random() });
         const pathData = e.path.toObject(['id']);
         socket.emit('drawing-data', { roomId, object: pathData });
     });
 
-    // Ластик (удаление по клику)
     canvas.on('mouse:down', (opt) => {
         if (currentTool === 'eraser') {
             const target = canvas.findTarget(opt.e);
@@ -214,7 +209,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Отправка полного состояния при изменении (для синхронизации)
     canvas.on('object:modified', () => sendCanvasState());
     canvas.on('object:removed', () => sendCanvasState());
 
@@ -286,9 +280,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ---------- БЛОКИРОВКА ----------
-    let isLocked = false;
+    let isLocked = true; // По умолчанию заблокировано (будет обновлено при получении статуса с сервера)
     const lockBtn = document.getElementById('lock-btn');
     if (lockBtn) {
+        // Устанавливаем начальное состояние кнопки (заблокировано)
+        lockBtn.classList.add('locked');
+        lockBtn.innerHTML = '<i class="fas fa-lock"></i>';
+        
         lockBtn.addEventListener('click', () => {
             isLocked = !isLocked;
             lockBtn.classList.toggle('locked', isLocked);
@@ -308,6 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 resizeCanvas();
             });
         }
+        // Обработка статуса блокировки из init-canvas
         if (data.locked !== undefined) {
             isLocked = data.locked;
             if (lockBtn) {
