@@ -1,4 +1,4 @@
-// student.js — с обработкой блокировки и корректным начальным доступом
+// student.js — с отключением интерактивности при блокировке
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -12,10 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // ---------- CANVAS ----------
+    // ---------- CANVAS с отключённой интерактивностью по умолчанию ----------
     const canvas = new fabric.Canvas('canvas', { 
         backgroundColor: 'white', 
-        selection: false  // уже отключено, оставляем как есть
+        selection: false,
+        interactive: false // изначально недоступен для взаимодействия
     });
 
     let originalWidth = null;
@@ -126,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.isDrawingMode = false;
 
     let currentTool = 'pencil';
-    let hasAccess = false; // По умолчанию доступ закрыт (будет обновлено при получении статуса)
+    let hasAccess = false; // По умолчанию доступ закрыт
 
     // ---------- UI ----------
     const roomIdEl = document.getElementById('room-id');
@@ -149,7 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
             pencilBtn.classList.add('active');
             currentTool = 'pencil';
-            canvas.isDrawingMode = hasAccess; // Рисование только если есть доступ
+            // Рисование разрешено только если есть доступ
+            canvas.isDrawingMode = hasAccess;
         });
     }
     if (eraserBtn) {
@@ -170,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.style.pointerEvents = hasAccess ? 'auto' : 'none';
         });
     }
-    updateToolsAccess(); // Применим начальное состояние
+    updateToolsAccess();
 
     // ---------- РИСОВАНИЕ ----------
     canvas.on('path:created', (e) => {
@@ -196,10 +198,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ---------- БЛОКИРОВКА ----------
+    // Функция обновления состояния интерактивности холста
+    function updateCanvasInteractive() {
+        canvas.interactive = hasAccess;
+        // Если доступ закрыт, также выключаем режим рисования
+        if (!hasAccess) {
+            canvas.isDrawingMode = false;
+        } else {
+            // Если доступ открыт, восстанавливаем режим рисования в соответствии с выбранным инструментом
+            canvas.isDrawingMode = (currentTool === 'pencil');
+        }
+    }
+
     socket.on('admin-lock-status', (locked) => {
         hasAccess = !locked;
-        canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
-
+        updateCanvasInteractive();
         updateToolsAccess();
 
         if (accessIndicator) {
@@ -232,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Обрабатываем статус блокировки
         if (data.locked !== undefined) {
             hasAccess = !data.locked;
-            canvas.isDrawingMode = hasAccess && currentTool === 'pencil';
+            updateCanvasInteractive();
             updateToolsAccess();
             if (accessIndicator) {
                 if (hasAccess) {
