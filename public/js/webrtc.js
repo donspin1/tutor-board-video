@@ -142,7 +142,7 @@ function toggleCamera() {
     const videoTrack = localStream.getVideoTracks()[0];
     if (videoTrack) {
         isCameraActive = !isCameraActive;
-        videoTrack.enabled = isCameraActive;
+        videoTrack.enabled = isCameraActive; // Включаем/выключаем сам поток данных
 
         // Чтобы у СЕБЯ видеть темный экран или видео
         const localVideo = document.querySelector(`#container-local video`);
@@ -263,7 +263,7 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ (уже есть) ----------
+// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ ----------
 function makeDraggable(element, handle) {
     if (!element || !handle) return;
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
