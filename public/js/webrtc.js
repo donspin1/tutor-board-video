@@ -263,7 +263,7 @@ function replaceVideoTrack(newTrack) {
     }
 }
 
-// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ ----------
+// ---------- 7. ПЕРЕТАСКИВАНИЕ ПАНЕЛЕЙ (ИСПРАВЛЕНО: ПО ВСЕМУ ОКНУ) ----------
 function makeDraggable(element, handle) {
     if (!element || !handle) return;
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
@@ -286,11 +286,11 @@ function makeDraggable(element, handle) {
         pos4 = e.clientY;
         let top = element.offsetTop - pos2;
         let left = element.offsetLeft - pos1;
-        const canvasArea = document.querySelector('.canvas-area');
-        if (canvasArea) {
-            top = Math.max(0, Math.min(top, canvasArea.clientHeight - element.clientHeight));
-            left = Math.max(0, Math.min(left, canvasArea.clientWidth - element.clientWidth));
-        }
+        // Ограничения по размерам окна (чтобы панель не ушла за пределы)
+        const maxTop = document.documentElement.clientHeight - element.offsetHeight;
+        const maxLeft = document.documentElement.clientWidth - element.offsetWidth;
+        top = Math.min(Math.max(top, 0), maxTop);
+        left = Math.min(Math.max(left, 0), maxLeft);
         element.style.top = top + 'px';
         element.style.left = left + 'px';
         element.style.right = 'auto';
