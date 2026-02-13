@@ -1,4 +1,4 @@
-/* ===== TutorBoard — ZOOM-ЛОГИКА (комнатная модель) ===== */
+/* ===== TutorBoard — ПОЛНАЯ СТИЛИЗАЦИЯ (десктоп + мобильная) ===== */
 
 :root {
     --primary: #6366f1;
@@ -78,7 +78,7 @@ body {
     min-width: 0;
 }
 
-/* ===== ВЕРХНЯЯ ПАНЕЛЬ С ЭЛЕМЕНТАМИ УПРАВЛЕНИЯ ===== */
+/* ===== ВЕРХНЯЯ ПАНЕЛЬ ===== */
 .top-bar {
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
@@ -127,7 +127,7 @@ body {
     background: var(--primary-dark);
 }
 
-/* ===== КНОПКИ УПРАВЛЕНИЯ ЗВОНКОМ (В СТИЛЕ ZOOM) ===== */
+/* ===== КНОПКИ УПРАВЛЕНИЯ ЗВОНКОМ ===== */
 .call-controls {
     display: flex;
     gap: 8px;
@@ -178,40 +178,60 @@ body {
     background: var(--danger);
 }
 
-/* ===== ВИДЕО-ПАНЕЛЬ (ТОЛЬКО СЕТКА) ===== */
+/* ===== ПАНЕЛЬ ВИДЕО (ОСНОВНЫЕ СТИЛИ) ===== */
 .video-panel {
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 16px;
-    padding: 15px;
+    padding: 0; /* убираем внутренний отступ, добавим внутри */
     margin-bottom: 20px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0;
     flex-shrink: 0;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.video-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 15px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    border-radius: 16px 16px 0 0;
+    cursor: move;
+    user-select: none;
+    font-weight: 500;
+    color: var(--dark);
+}
+
+.video-header span {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .video-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 10px;
+    padding: 15px;
 }
 
 .video-container {
     position: relative;
-    background: var(--dark); /* Фон контейнера */
+    background: var(--dark);
     border-radius: 12px;
     overflow: hidden;
     aspect-ratio: 4/3;
 }
 
-/* ИСПРАВЛЕНИЕ: Темный фон для видео, чтобы не зависал кадр */
 .video-container video {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    background-color: var(--dark); 
+    background-color: var(--dark);
 }
 
 .video-label {
@@ -341,7 +361,53 @@ body {
     transform: translateX(0);
 }
 
-/* ===== МОБИЛЬНАЯ АДАПТАЦИЯ ===== */
+/* ===== ДЕСКТОП — ПЛАВАЮЩАЯ ПАНЕЛЬ ВИДЕО (ширина > 900px) ===== */
+@media (min-width: 901px) {
+    .video-panel {
+        position: absolute !important;
+        top: 100px;
+        right: 20px;
+        width: 320px;
+        max-width: 100%;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 0;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+        z-index: 100;
+        margin-bottom: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .video-panel .video-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 15px;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+        border-radius: 16px 16px 0 0;
+        cursor: move;
+        user-select: none;
+        font-weight: 500;
+        color: var(--dark);
+    }
+
+    .video-panel .video-grid {
+        padding: 15px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+    }
+
+    .canvas-area {
+        position: relative;
+        z-index: 1;
+    }
+}
+
+/* ===== МОБИЛЬНАЯ АДАПТАЦИЯ (ширина ≤ 900px) — без изменений, всё в потоке ===== */
 @media (max-width: 900px) {
     .board-container {
         flex-direction: column;
@@ -385,12 +451,17 @@ body {
 
     .video-panel {
         margin-bottom: 10px;
-        padding: 10px;
+        padding: 0; /* сброс */
+    }
+
+    .video-header {
+        padding: 10px 12px;
     }
 
     .video-grid {
         grid-template-columns: repeat(2, 1fr);
         gap: 8px;
+        padding: 12px;
     }
 
     .canvas-area {
